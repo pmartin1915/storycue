@@ -1,6 +1,6 @@
 # Gemini Deep Research prompt — a family-interview video recorder with a subject-facing prompt screen
 
-> **Paste everything between the rules into Gemini Deep Research.** Gemini doesn't have file access; the prompt is fully self-contained. Drop the report back beside this file as `deep-research-family-story-recorder-REPORT.md`; a Claude session adjudicates it into a synthesis.
+> **Paste everything between the rules into Gemini Deep Research.** Gemini doesn't have file access; the prompt is fully self-contained. Drop the report back beside this file as `PROMPT-B-product-REPORT.md`; a Claude session adjudicates it into a synthesis.
 
 ---
 

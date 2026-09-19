@@ -1,6 +1,6 @@
 # Gemini Deep Research prompt — shipping an iPhone Duo app from GitHub Actions, solo, no Mac
 
-> **Paste everything between the rules into Gemini Deep Research.** Gemini doesn't have file access; the prompt is fully self-contained. Drop the report back beside this file as `deep-research-iphone-duo-ship-path-REPORT.md`; a Claude session adjudicates it into a synthesis.
+> **Paste everything between the rules into Gemini Deep Research.** Gemini doesn't have file access; the prompt is fully self-contained. Drop the report back beside this file as `PROMPT-A-ship-path-REPORT.md`; a Claude session adjudicates it into a synthesis.
 
 ---
 

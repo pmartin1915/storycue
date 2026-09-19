@@ -14,10 +14,12 @@ See README.md and docs/PLAN.md. Decisions of record are in docs/HANDOFF-2026-09-
 - [x] Local folder seeded (this file)
 - [x] Kimi plan review, adjudicated: docs/reviews/PLAN-REVIEW-2026-09-18.md (3 accept, 1 reject-with-replacement)
 
+- [x] GitHub remote pmartin1915/storycue (private), main pushed 2026-09-18; dev-ops registry row added
+
 ## What's Next
-- [ ] Gemini Deep Research reports into docs/research/ (Perry, running 2026-09-19)
+- [ ] Gemini Deep Research reports into docs/research/ -- a Sonnet session runs them via the gemini-deep-research skill; see docs/HANDOFF-2026-09-18-research-run.md
 - [ ] Tech Talk transcripts into docs/techtalks/ (111464, 111465, 111463, 111461)
-- [ ] GitHub remote pmartin1915/storycue (private) and first push
+- [ ] Sol plan review after 2026-09-20 14:36, then SYNTHESIS-2026-09.md and fold into PLAN.md
 - [ ] Scaffold: project.yml + build.yml + deploy.yml adapted from shortless-ios, CI green on macos-27
 - [ ] Week 1 (plan section 9): single-screen recorder, mocked capture, XCTest
 
