@@ -19,8 +19,11 @@ See README.md and docs/PLAN.md. Decisions of record are in docs/HANDOFF-2026-09-
 - [x] Tech Talk transcripts landed 2026-09-18 (all four had a working Transcript tab, no egress issue on this machine): docs/techtalks/111464-multiple-displays-and-scenes.md, 111465-camera-experience.md, 111463-adaptive-layouts.md, 111461-prepare-your-app.md
 - [x] Reference fixes (2026-09-19, Phase A of the Sol-gate handoff): PLAN.md header (false
   bootstrap-script claim, inverted canonical/historical framing, wrong ai/IDEAS.md pointer),
-  §7/§8 research filenames, README handoff pointer. PLAN.md §§1-5 content untouched. See
-  this session's commit.
+  §7/§8 research filenames, README handoff pointer. PLAN.md §§1-5 content untouched. Commit
+  6d0c3f7; the dev-ops/IPHONE-DUO-PLAN-2026-09-18.md pointer it introduced was confirmed to exist.
+  Kimi and Sol were both deliberately NOT dispatched this session -- Sol per the quota gate,
+  Kimi because the only open question (Xcode 27.1 SDK support) postdates Kimi's training data
+  and a review of a 32-line pointer diff has nothing worth auditing; both resume in Phase B.
 
 ## What's Next
 - [ ] Sol plan review after 2026-09-20 14:36, then SYNTHESIS-2026-09.md and fold into PLAN.md (fold in both Gemini reports and the four transcripts in the same pass -- Task 3 of docs/HANDOFF-2026-09-18-research-run.md, deliberately NOT done this session)
@@ -31,20 +34,31 @@ See README.md and docs/PLAN.md. Decisions of record are in docs/HANDOFF-2026-09-
 - Sol plan review NOT run: ChatGPT Plus usage limit until 2026-09-20 14:36. Re-dispatch plan section 8 row 1 after that; then fold both reviews into PLAN.md sections 4-5 in one pass.
 - The hosted runner has no iOS 27.1 SDK yet (checked 2026-09-18). Pivot date 2026-10-10 (plan section 5).
 - Outer-display touch interactivity: RESOLVED by 111465 transcript + PROMPT-A report -- CameraCaptureAccessory content is explicitly non-interactive/display-only (the outer display cannot host tap targets); not yet folded into PLAN.md, that's Task 3.
-- **PLAN.md §1 vs. PROMPT-A-ship-path-REPORT.md contradiction, unresolved -- for the Task 3 synthesis:**
-  PROMPT-A's Executive Summary says Duo SDK/simulator support was "missing from this initial
-  [27.1 beta] build," arriving later. Checked against press coverage of the actual beta
-  2026-09-19: MacRumors (2026-09-18, https://www.macrumors.com/2026/09/18/apple-releases-xcode-27-1-beta-iphone-duo-support/)
-  quotes Apple's own materials saying the 27.1 beta ships "updated SDKs for the iPhone Duo, and
-  a simulator that supports the device's new poses and orientations" in Device Hub -- i.e. the
-  *local* beta does have Duo simulator support now; PROMPT-A's "missing" claim looks wrong on
-  this point, or was answering a narrower question (e.g. full submission-grade tooling) that
-  wasn't disambiguated. This doesn't change the real constraint either way: Perry has no Mac at
-  all, so a local beta's simulator support is moot -- what matters is the hosted `macos-27`
-  GitHub Actions runner image, which still lacks the 27.1 SDK as of 2026-09-18 (line above).
-  Also re-read PROMPT-A's "self-hosted Mac mandatory" framing as conditional on needing 27.1
-  before hosted runners catch up, not a flat contradiction of section 4.3/5's no-Mac constraint,
-  before the synthesis pass tries to reconcile them as opposed claims.
+- **PLAN.md §1 vs. PROMPT-A-ship-path-REPORT.md contradiction, unresolved and possibly a citation
+  problem in the report itself -- for the Task 3 synthesis (checked 2026-09-19, commit 6d0c3f7):**
+  PROMPT-A (lines 83, 103) states, at "Confidence: High," that "the iOS SDK and simulator
+  support for the iPhone Duo are entirely missing from the initial Xcode 27.1 beta," citing its
+  own footnotes 1 and 2, and that it will arrive "later this month." **But footnote 1 in that
+  report's Works Cited is titled "Xcode 27.2 Beta Release Notes"** (not 27.1), and footnote 2 is
+  an Apple Developer Forums thread, not release notes -- so the report's own citations don't
+  clearly support a claim about the 27.1 beta specifically; it may have conflated 27.1 and 27.2.
+  Independently, a WebSearch + a WebFetch of the MacRumors 2026-09-18 article
+  (https://www.macrumors.com/2026/09/18/apple-releases-xcode-27-1-beta-iphone-duo-support/,
+  read directly, not the aggregator summary) confirms that article states the 27.1 beta ships
+  "updated SDKs for the iPhone Duo, and a simulator that supports the device's new poses and
+  orientations" -- i.e. press coverage says 27.1 already has Duo simulator support. Apple's own
+  release-notes page (developer.apple.com/documentation/xcode-release-notes/xcode-27-release-notes)
+  could NOT be checked -- it's JS-rendered and WebFetch returned only the page title, no body
+  text. So this is a live, unresolved disagreement between one Gemini-report citation (of
+  questionable relevance) and press coverage, not something this check settled -- the synthesis
+  pass should either get a human/Sol read of Apple's actual release notes page, or treat this as
+  UNVERIFIED rather than picking a side. It doesn't change the load-bearing constraint either
+  way: Perry has no Mac at all, so a *local* beta's simulator support is moot -- what matters is
+  the hosted `macos-27` GitHub Actions runner image, which still lacks the 27.1 SDK as of
+  2026-09-18 (Open Loop above). Also re-read PROMPT-A's "self-hosted Mac mandatory" framing as
+  conditional on needing 27.1 before hosted runners catch up, not a flat contradiction of
+  section 4.3/5's no-Mac constraint, before the synthesis pass tries to reconcile them as
+  opposed claims.
 
 ## Git state
-- Branch: main, remote https://github.com/pmartin1915/storycue.git (private), pushed through 49b6091 as of the start of this session's commit (Phase A reference fixes above)
+- Branch: main, remote https://github.com/pmartin1915/storycue.git (private), pushed through 6d0c3f7 (Phase A reference fixes) as of 2026-09-19; a follow-up commit correcting this Open Loop note lands right after
