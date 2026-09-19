@@ -9,6 +9,7 @@ See README.md and docs/PLAN.md. Decisions of record are in docs/HANDOFF-2026-09-
 ## What's Done
 - [x] Plan, handoff, two Gemini research prompts (2026-09-18)
 - [x] Local folder seeded (this file)
+- [x] Kimi plan review, adjudicated: docs/reviews/PLAN-REVIEW-2026-09-18.md (3 accept, 1 reject-with-replacement)
 
 ## What's Next
 - [ ] Gemini Deep Research reports into docs/research/ (Perry, running 2026-09-19)
@@ -18,6 +19,7 @@ See README.md and docs/PLAN.md. Decisions of record are in docs/HANDOFF-2026-09-
 - [ ] Week 1 (plan section 9): single-screen recorder, mocked capture, XCTest
 
 ## Open Loops
+- Sol plan review NOT run: ChatGPT Plus usage limit until 2026-09-20 14:36. Re-dispatch plan section 8 row 1 after that; then fold both reviews into PLAN.md sections 4-5 in one pass.
 - The hosted runner has no iOS 27.1 SDK yet (checked 2026-09-18). Pivot date 2026-10-10 (plan section 5).
 - Outer-display touch interactivity unconfirmed -- transcripts / prompt A.
 
