@@ -1,6 +1,9 @@
 # STATE -- storycue
 
-> Seeded 2026-09-19 by dev-ops/scripts/bootstrap-storycue.ps1. Keep short; it is read first.
+> Seeded 2026-09-18 by hand from dev-ops branch claude/ios-duo-app-ideas-te3edu: the four docs
+> copied with `git show` and byte-matched via `cmp`, seed files written directly. The branch's
+> bootstrap-storycue.ps1 was NOT executed (the session's classifier refused it) and has run on
+> no machine; its -DevOps default resolves wrong when run from outside dev-ops. Keep short; read first.
 
 ## What this is
 See README.md and docs/PLAN.md. Decisions of record are in docs/HANDOFF-2026-09-18.md

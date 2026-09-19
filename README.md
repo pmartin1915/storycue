@@ -10,6 +10,7 @@ Nothing leaves the device.
 - **Handoff for agents:** `docs/HANDOFF-2026-09-18.md`, then `ai/STATE.md`
 - **Research:** prompts in `docs/research/`, Gemini reports land beside them as `*-REPORT.md`,
   Apple Tech Talk transcripts in `docs/techtalks/<id>-<slug>.md`
+- **Reviews:** cross-model reviews of the plan and diffs, adjudicated, in `docs/reviews/`
 
 Bundle id `dev.pmartin1915.storycue`. Pipeline pattern: `pmartin1915/shortless-ios`.
 Ship target: iPhone Duo launch, 2026-10-23.
