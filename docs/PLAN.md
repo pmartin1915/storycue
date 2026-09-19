@@ -1,11 +1,13 @@
 # iPhone Duo — family story recorder (working name "StoryCue") — plan
 
 _Written 2026-09-18 (Fable session, remote). Perry chose this on 2026-09-18 over two
-alternatives, which are deferred in `ai/IDEAS.md` (fold-to-reveal flashcards; hinge
-instrument). This file is the plan and the decision record. It is NOT the app repo —
-the app does not exist yet; see §7 for what has to happen before it can.
-**Canonical copy since 2026-09-19: `DevProjects/storycue/docs/PLAN.md`**, seeded by
-`dev-ops/scripts/bootstrap-storycue.ps1`. Edit it there; this copy is the historical record._
+alternatives, which are deferred in `dev-ops/ai/IDEAS.md` (2026-09-18 entry: fold-to-reveal
+flashcards; hinge instrument). This file is the plan and the decision record.
+
+This copy, in `DevProjects/storycue/docs/PLAN.md`, is canonical since 2026-09-19. It was
+seeded by hand from the dev-ops branch (`git show` + `cmp`, per `ai/STATE.md`) — the
+`bootstrap-storycue.ps1` script was never executed. The dev-ops original,
+`dev-ops/IPHONE-DUO-PLAN-2026-09-18.md`, is now the historical record; edit this copy._
 
 ## 0. The decision, and the one-line reason
 
@@ -182,7 +184,7 @@ In the order they block things:
    §1, §5, minus the app groups and extensions.
 4. **GitHub secrets** on the new repo: the same six as Shortless plus one profile. The
    certificate and API-key secrets can be copied from Shortless's repo settings.
-5. **Gemini Deep Research:** run the two prompts in `research-prompts/` (§8) and drop the
+5. **Gemini Deep Research:** run the two prompts in `docs/research/` (§8) and drop the
    reports beside them; this session or the next adjudicates into a synthesis file, the
    way `LEGIBILITY-SYNTHESIS-2026-08.md` did.
 6. Later: privacy policy page on martinapps.dev; featuring nomination; Duo screenshots
@@ -199,11 +201,11 @@ pre-app 10-19. Weeks 1 and 4 below assume Perry does operator acts only.
 
 **Gemini Deep Research** (Perry runs; prompts are self-contained, no repo content):
 
-- `research-prompts/deep-research-iphone-duo-ship-path.md` — the platform and the ship
+- `docs/research/PROMPT-A-ship-path.md` — the platform and the ship
   path: exact accessory API surface, Xcode 27.1 on hosted runners, submission timing for
   27.1-SDK builds, featuring mechanics, testing without hardware, what happened at prior
   foldable launches.
-- `research-prompts/deep-research-family-story-recorder.md` — the product: competitor
+- `docs/research/PROMPT-B-product.md` — the product: competitor
   landscape and pricing, what makes an interview question produce a story, question-set
   licensing, recording-consent law, kids-in-frame rules, holiday campaign patterns,
   readability for elderly subjects.

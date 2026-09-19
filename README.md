@@ -7,7 +7,9 @@ Nothing leaves the device.
 
 - **Plan and decisions:** `docs/PLAN.md` (canonical since 2026-09-19; the dev-ops copy is the
   historical record)
-- **Handoff for agents:** `docs/HANDOFF-2026-09-18.md`, then `ai/STATE.md`
+- **Handoff for agents:** `ai/STATE.md` first, then the latest dated file in `docs/HANDOFF-*.md`
+  (currently `docs/HANDOFF-2026-09-19-sol-review-and-synthesis.md`). Decisions of record:
+  `docs/HANDOFF-2026-09-18.md`.
 - **Research:** prompts in `docs/research/`, Gemini reports land beside them as `*-REPORT.md`,
   Apple Tech Talk transcripts in `docs/techtalks/<id>-<slug>.md`
 - **Reviews:** cross-model reviews of the plan and diffs, adjudicated, in `docs/reviews/`
