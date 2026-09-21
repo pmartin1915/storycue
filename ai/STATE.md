@@ -26,7 +26,7 @@ docs/research/SYNTHESIS-2026-09.md, which is where every research/review verdict
 - [x] **Scaffold written, Kimi-reviewed (docs/reviews/SCAFFOLD-REVIEW-2026-09-21.md), pushed as 195da92** -- project.yml, build.yml, deploy.yml, PrivacyInfo.xcprivacy, usage strings, DuoSupport + two test bundles. NEVER EXECUTED YET: see next.
 
 ## What's Next
-- [ ] **Week-0 gate: read CI run 35646080336** (Build & Test on macos-27, triggered by 195da92, still queued at handoff). Green = gate met; red = fix forward per docs/HANDOFF-2026-09-21.md Task 1. Then the app icon from DevProjects/brand.
+- [ ] **Week-0 gate: read the latest Build & Test run on main** (`gh run list`; the run for 332af19 -- the two earlier queued runs were cancelled as superseded; still queued at handoff). Green = gate met; red = fix forward per docs/HANDOFF-2026-09-21.md Task 1. Then the app icon from DevProjects/brand.
 - [ ] Week 1 (plan section 9): single-screen recorder with segment finalization (Sol 2's event table), mocked capture, XCTest. Product rules: SYNTHESIS Q7.
 - [ ] Kimi state-machine enumeration once the state machine exists (plan section 8 row 4).
 - [ ] 2026-10-10 pivot check (plan section 5) -- the EXPECTED path is 1.0 without Duo.
@@ -41,4 +41,4 @@ docs/research/SYNTHESIS-2026-09.md, which is where every research/review verdict
 - Sol's ASC pre-query for build-number collisions: deferred to ai/IDEAS.md.
 
 ## Git state
-- Branch: main, remote https://github.com/pmartin1915/storycue.git (private). 2026-09-21 session: b8e5902 (synthesis + Sol review + PLAN pass), 195da92 (scaffold), then this STATE + docs/HANDOFF-2026-09-21.md. CI run 35646080336 pending.
+- Branch: main, remote https://github.com/pmartin1915/storycue.git (private). 2026-09-21 session: b8e5902 (synthesis + Sol review + PLAN pass), 195da92 (scaffold), 4d99fe3 + 332af19 (handoff, STATE, build.yml concurrency). The Build & Test run for 332af19 was queued at handoff; earlier runs cancelled as superseded.
