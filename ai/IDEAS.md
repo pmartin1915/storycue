@@ -1,0 +1,9 @@
+# IDEAS -- storycue (append-only; not @-imported)
+
+One line each: idea, why deferred, where it applies. Sweep at session start.
+
+- 2026-09-21 (Sol 6) App Store Connect pre-query in deploy.yml for an existing bundle-id/version/build before archiving -- deferred: needs an authenticated ASC API call in the job for a collision that run_number.run_attempt + "never re-run past upload" + the concurrency group already prevent for a solo dev; applies to deploy.yml if a duplicate-build 409 ever happens anyway.
+- 2026-09-21 (PROMPT-B section 6) bundle Atkinson Hyperlegible (OFL) for the outer-display prompt text -- deferred: a Kimi layout-review question for week 2, not a v1 requirement; SF Pro at heavy weights is the fallback; applies to the outer/accessory view.
+- 2026-09-21 the "Duo SDK gate" step is duplicated in build.yml and deploy.yml -- deferred: extract to a composite action under .github/actions/ once both have run green at least once and the printed facts have stabilised; applies to both workflows.
+- 2026-09-21 (Sol 5) privacy-safe diagnostic export (scene phase, hinge state, accessory availability, interruptions, device descriptor, file-output completion, all timestamps, local file, user-initiated share) -- deferred to week 2 under the gate; applies to the Duo path and to rung-5 tester reports.
+- 2026-09-21 (PROMPT-B section 5) free download + one-time unlock via StoreKit 2 -- Perry decision; v1 ships free with all decks; the deck model carries an isIncluded bit from day one so this is additive; applies to the deck model and ASC pricing.
