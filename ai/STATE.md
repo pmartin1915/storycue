@@ -8,57 +8,35 @@
 ## What this is
 See README.md and docs/PLAN.md. Decisions of record are in docs/HANDOFF-2026-09-18.md
 (name "StoryCue" for now; NO Duo hardware; identifiers and pipeline as Shortless).
+**docs/PLAN.md was edited in one coordinated pass on 2026-09-21** from
+docs/research/SYNTHESIS-2026-09.md, which is where every research/review verdict lives.
 
 ## What's Done
 - [x] Plan, handoff, two Gemini research prompts (2026-09-18)
 - [x] Local folder seeded (this file)
 - [x] Kimi plan review, adjudicated: docs/reviews/PLAN-REVIEW-2026-09-18.md (3 accept, 1 reject-with-replacement)
-
-- [x] GitHub remote pmartin1915/storycue (private), main pushed 2026-09-18; dev-ops registry row added
-- [x] Gemini Deep Research reports landed 2026-09-18 (laptop, gemini-deep-research skill): docs/research/PROMPT-A-ship-path-REPORT.md, docs/research/PROMPT-B-product-REPORT.md
-- [x] Tech Talk transcripts landed 2026-09-18 (all four had a working Transcript tab, no egress issue on this machine): docs/techtalks/111464-multiple-displays-and-scenes.md, 111465-camera-experience.md, 111463-adaptive-layouts.md, 111461-prepare-your-app.md
-- [x] Reference fixes (2026-09-19, Phase A of the Sol-gate handoff): PLAN.md header (false
-  bootstrap-script claim, inverted canonical/historical framing, wrong ai/IDEAS.md pointer),
-  §7/§8 research filenames, README handoff pointer. PLAN.md §§1-5 content untouched. Commit
-  6d0c3f7; the dev-ops/IPHONE-DUO-PLAN-2026-09-18.md pointer it introduced was confirmed to exist.
-  Kimi and Sol were both deliberately NOT dispatched this session -- Sol per the quota gate,
-  Kimi because the only open question (Xcode 27.1 SDK support) postdates Kimi's training data
-  and a review of a 32-line pointer diff has nothing worth auditing; both resume in Phase B.
+- [x] GitHub remote pmartin1915/storycue (private), main pushed 2026-09-18; dev-ops registry row added (on dev-ops master, 92d29df)
+- [x] Gemini Deep Research reports landed 2026-09-18: docs/research/PROMPT-A-ship-path-REPORT.md, PROMPT-B-product-REPORT.md
+- [x] Tech Talk transcripts landed 2026-09-18: docs/techtalks/111461, 111463, 111464, 111465
+- [x] Reference fixes 2026-09-19 (commit 6d0c3f7)
+- [x] **Sol plan review RAN 2026-09-21** (943 s, return_code 0, read the files): docs/reviews/SOL-PLAN-REVIEW-2026-09-21.md. 3 blocking + 3 should-fix; all adjudicated in SYNTHESIS §S (5 accept, 1 partial, 1 deferred to IDEAS).
+- [x] **Synthesis 2026-09-21**: docs/research/SYNTHESIS-2026-09.md folds both Gemini reports, all four transcripts, Kimi 1/2/4/5 and Sol 1-6, plus two first-hand checks that changed verdicts (below). PLAN.md sections 1, 2, 4, 5, 7, 8, 9 edited in the same pass.
+- [x] Runner README re-read 2026-09-21: unchanged since 09-18 (image 20260912.0186.1, Xcode 27.0, no 27.1 SDK, no Duo simulator). Image has xcbeautify 3.2.1 and xcodes; NOT xcodegen or xcpretty.
 
 ## What's Next
-- [ ] Sol plan review after 2026-09-20 14:36, then SYNTHESIS-2026-09.md and fold into PLAN.md (fold in both Gemini reports and the four transcripts in the same pass -- Task 3 of docs/HANDOFF-2026-09-18-research-run.md, deliberately NOT done this session)
-- [ ] Scaffold: project.yml + build.yml + deploy.yml adapted from shortless-ios, CI green on macos-27
-- [ ] Week 1 (plan section 9): single-screen recorder, mocked capture, XCTest
+- [ ] Scaffold (week-0 gate): project.yml + build.yml + deploy.yml + PrivacyInfo.xcprivacy + empty app + two test bundles, per PLAN section 4 as rewritten. See docs/HANDOFF-2026-09-21.md for what this session wrote and what the next session drives to green.
+- [ ] Week 1 (plan section 9): single-screen recorder with segment finalization (Sol 2's event table), mocked capture, XCTest. Product rules: SYNTHESIS Q7.
+- [ ] Kimi state-machine enumeration once the state machine exists (plan section 8 row 4).
+- [ ] 2026-10-10 pivot check (plan section 5) -- the EXPECTED path is 1.0 without Duo.
 
 ## Open Loops
-- Sol plan review NOT run: ChatGPT Plus usage limit until 2026-09-20 14:36. Re-dispatch plan section 8 row 1 after that; then fold both reviews into PLAN.md sections 4-5 in one pass.
-- The hosted runner has no iOS 27.1 SDK yet (checked 2026-09-18). Pivot date 2026-10-10 (plan section 5).
-- Outer-display touch interactivity: RESOLVED by 111465 transcript + PROMPT-A report -- CameraCaptureAccessory content is explicitly non-interactive/display-only (the outer display cannot host tap targets); not yet folded into PLAN.md, that's Task 3.
-- **PLAN.md §1 vs. PROMPT-A-ship-path-REPORT.md contradiction, unresolved and possibly a citation
-  problem in the report itself -- for the Task 3 synthesis (checked 2026-09-19, commit 6d0c3f7):**
-  PROMPT-A (lines 83, 103) states, at "Confidence: High," that "the iOS SDK and simulator
-  support for the iPhone Duo are entirely missing from the initial Xcode 27.1 beta," citing its
-  own footnotes 1 and 2, and that it will arrive "later this month." **But footnote 1 in that
-  report's Works Cited is titled "Xcode 27.2 Beta Release Notes"** (not 27.1), and footnote 2 is
-  an Apple Developer Forums thread, not release notes -- so the report's own citations don't
-  clearly support a claim about the 27.1 beta specifically; it may have conflated 27.1 and 27.2.
-  Independently, a WebSearch + a WebFetch of the MacRumors 2026-09-18 article
-  (https://www.macrumors.com/2026/09/18/apple-releases-xcode-27-1-beta-iphone-duo-support/,
-  read directly, not the aggregator summary) confirms that article states the 27.1 beta ships
-  "updated SDKs for the iPhone Duo, and a simulator that supports the device's new poses and
-  orientations" -- i.e. press coverage says 27.1 already has Duo simulator support. Apple's own
-  release-notes page (developer.apple.com/documentation/xcode-release-notes/xcode-27-release-notes)
-  could NOT be checked -- it's JS-rendered and WebFetch returned only the page title, no body
-  text. So this is a live, unresolved disagreement between one Gemini-report citation (of
-  questionable relevance) and press coverage, not something this check settled -- the synthesis
-  pass should either get a human/Sol read of Apple's actual release notes page, or treat this as
-  UNVERIFIED rather than picking a side. It doesn't change the load-bearing constraint either
-  way: Perry has no Mac at all, so a *local* beta's simulator support is moot -- what matters is
-  the hosted `macos-27` GitHub Actions runner image, which still lacks the 27.1 SDK as of
-  2026-09-18 (Open Loop above). Also re-read PROMPT-A's "self-hosted Mac mandatory" framing as
-  conditional on needing 27.1 before hosted runners catch up, not a flat contradiction of
-  section 4.3/5's no-Mac constraint, before the synthesis pass tries to reconcile them as
-  opposed claims.
+- The hosted runner has no iOS 27.1 SDK (re-checked 2026-09-21). Pivot date 2026-10-10 (plan section 5). PROMPT-A expects hosted 27.1 late Oct / early Nov.
+- **Outer-display touch: CORRECTED 2026-09-21.** The earlier note here said "RESOLVED non-interactive by 111465 + PROMPT-A". Wrong on both counts: no transcript says anything about interactivity, and PROMPT-A quoted the UIKit *external display* article. Apple's DocC for CameraCaptureAccessory (read directly via the DocC JSON endpoint, which works where the HTML page returns only a title) says "unlike ExternalNonInteractiveAccessory, the content can be interactive." v1 is display-only BY DECISION (no hardware to verify hit-testing), not by platform limit. SYNTHESIS Q1.
+- **Xcode 27.1 / Duo simulator contradiction: RESOLVED 2026-09-21.** PROMPT-A's "later this month" line is from the Xcode 27.2 beta notes (as its own footnote says); Apple forum 847137's accepted answer says the Duo simulator shows up in 27.1 beta after re-downloading the iOS 27.1 simulator runtime component. Press was right. Moot anyway: no Mac. Apple's own 27.1 release-notes HTML still unreadable (title only) -- try the DocC JSON endpoint pattern next time.
+- Name: PROMPT-B recommends abandoning "StoryCue" but says its trademark search was SIMULATED. No evidence weight. Perry's call; locked "for now".
+- Pricing: free + one-time unlock (PROMPT-B) is a Perry decision, deferred; deck model gets an `isIncluded` bit from the start.
+- Optional operator act 2026-09-23: Apple online Duo Q&A (plan section 7 item 7).
+- Sol's ASC pre-query for build-number collisions: deferred to ai/IDEAS.md.
 
 ## Git state
-- Branch: main, remote https://github.com/pmartin1915/storycue.git (private), pushed through 6d0c3f7 (Phase A reference fixes) as of 2026-09-19; a follow-up commit correcting this Open Loop note lands right after
+- Branch: main, remote https://github.com/pmartin1915/storycue.git (private). 2026-09-21 session commits: synthesis + Sol review + PLAN pass, then scaffold; see docs/HANDOFF-2026-09-21.md.
