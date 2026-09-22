@@ -558,4 +558,132 @@ final class SessionMachineTests: XCTestCase {
             ClipManifestEntry(questionID: "parents.002", segments: [keptFailed]),
         ])
     }
+
+    // MARK: - Week 1 coverage hardening (docs/WEEK1-COVERAGE-SPEC.md)
+
+    func testHingeChangedFromNonRecordingPhasesUpdatesHingeOnly() {
+        for phase: RecordingPhase in [.idle, .paused(reason: .userPause)] {
+            for newValue: HingeStatus? in [.closed, nil] {
+                let state = makeState(phase: phase)
+                let (newState, effects) = SessionMachine.reduce(state, .hingeChanged(newValue))
+                XCTAssertEqual(newState.hinge, newValue)
+                XCTAssertEqual(newState.phase, phase)   // phase untouched outside .recording
+                XCTAssertEqual(effects, [])
+            }
+        }
+    }
+
+    func testAccessoryBecomingAvailableWhileRecordingIsNoOp() {
+        let (state, _) = recordingState()
+        let (newState, effects) = SessionMachine.reduce(state, .accessoryAvailabilityChanged(true))
+        XCTAssertEqual(newState, state)
+        XCTAssertEqual(effects, [])
+    }
+
+    func testMediaServicesResetFromFinishingRecreatesSessionButLeavesPhaseUnchanged() {
+        let (_, segment) = recordingState()
+        let state = finishingState(reason: .userPause, segment: segment)
+        let (newState, effects) = SessionMachine.reduce(state, .mediaServicesReset)
+        XCTAssertEqual(newState.phase, state.phase)     // still .finishing, unchanged
+        XCTAssertEqual(effects, [.recreateCaptureSession])   // no .stopSegment — that only fires from .recording
+    }
+
+    func testRuntimeErrorFromNonRecordingPhasesIsNoOp() {
+        for phase: RecordingPhase in [.idle, .paused(reason: .userPause)] {
+            let state = makeState(phase: phase)
+            let (newState, effects) = SessionMachine.reduce(state, .runtimeError)
+            XCTAssertEqual(newState, state)
+            XCTAssertEqual(effects, [])
+        }
+    }
+
+    func testFileOutputFinishedEndsBackgroundTaskOnUserStopExit() {
+        let (_, segment) = recordingState()
+        let state = makeState(
+            phase: .finishing(segmentID: segment.id, reason: .userStop),
+            clips: [Clip(questionID: segment.questionID, segments: [segment])],
+            backgroundTaskActive: true
+        )
+        let url = URL(fileURLWithPath: "/tmp/segment.mov")
+        let (newState, effects) = SessionMachine.reduce(
+            state, .fileOutputFinished(segmentID: segment.id, outcome: .saved(url: url))
+        )
+        XCTAssertEqual(newState.phase, .idle)
+        XCTAssertEqual(newState.questionIndex, 1)
+        XCTAssertFalse(newState.backgroundTaskActive)
+        XCTAssertEqual(effects, [
+            .persistLedger(expectedPersistedClip(segment: segment, reason: .userStop, outcome: .saved(url: url))),
+            .endBackgroundTask,
+        ])
+    }
+
+    func testRuntimeErrorEscapeEndsBackgroundTaskWhenActive() {
+        let (_, segment) = recordingState()
+        let state = makeState(
+            phase: .finishing(segmentID: segment.id, reason: .userPause),
+            clips: [Clip(questionID: segment.questionID, segments: [segment])],
+            backgroundTaskActive: true
+        )
+        let (newState, effects) = SessionMachine.reduce(state, .runtimeError)
+        XCTAssertEqual(newState.phase, .paused(reason: .userPause))
+        XCTAssertFalse(newState.backgroundTaskActive)
+        XCTAssertEqual(newState.clips[0].segments[0].outcome, .failed(kept: true))
+        XCTAssertEqual(effects, [
+            .persistLedger(expectedPersistedClip(segment: segment, reason: .userPause, outcome: .failed(kept: true))),
+            .endBackgroundTask,
+        ])
+    }
+
+    func testFileOutputFinishedWithSegmentNotInClipsStillTransitionsPhaseButSkipsPersist() {
+        let phantomID = UUID()
+        let state = makeState(phase: .finishing(segmentID: phantomID, reason: .userPause), clips: [])
+        let (newState, effects) = SessionMachine.reduce(
+            state, .fileOutputFinished(segmentID: phantomID, outcome: .saved(url: URL(fileURLWithPath: "/tmp/x.mov")))
+        )
+        XCTAssertEqual(newState.phase, .paused(reason: .userPause))   // .userPause branch, not the .userStop idle/advance one
+        XCTAssertEqual(newState.clips, [])                            // nothing to mutate
+        XCTAssertEqual(effects, [])                                   // no .persistLedger, no .endBackgroundTask
+    }
+
+    func testBackgroundTaskEventsFromPausedWithTaskActiveAreNoOps() {
+        for event: SessionEvent in [.sceneDidEnterBackground, .sceneDidBecomeActive] {
+            let state = makeState(phase: .paused(reason: .userPause), backgroundTaskActive: true)
+            let (newState, effects) = SessionMachine.reduce(state, event)
+            XCTAssertEqual(newState, state, "\(event) from .paused must be a no-op even with a task active")
+            XCTAssertEqual(effects, [])
+        }
+    }
+
+    func testInterruptionBeginEventsFromNonRecordingPhasesAreNoOps() {
+        for phase: RecordingPhase in [.idle, .paused(reason: .userPause)] {
+            let events: [SessionEvent] = [
+                .audioInterruptionBegan,
+                .captureInterruptionBegan(.audioDeviceInUseByAnotherClient),
+                .thermalPressureCritical,
+                .directionChanged,
+                .accessoryAvailabilityChanged(false),
+            ]
+            for event in events {
+                let state = makeState(phase: phase)
+                let (newState, effects) = SessionMachine.reduce(state, event)
+                XCTAssertEqual(newState, state, "\(event) from \(phase) must be a no-op")
+                XCTAssertEqual(effects, [])
+            }
+        }
+    }
+
+    func testTapGuardRejectionsOutsideFinishing() {
+        let pausedState = makeState(phase: .paused(reason: .userPause))
+        let cases: [(state: SessionState, event: SessionEvent)] = [
+            (pausedState, .tapPause),
+            (recordingState().state, .tapResume),
+            (recordingState().state, .tapRecord),
+            (pausedState, .tapRecord),
+        ]
+        for (state, event) in cases {
+            let (newState, effects) = SessionMachine.reduce(state, event)
+            XCTAssertEqual(newState, state, "\(event) must be rejected from \(state.phase)")
+            XCTAssertEqual(effects, [])
+        }
+    }
 }
