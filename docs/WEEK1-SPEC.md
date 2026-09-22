@@ -12,6 +12,11 @@ Inputs: `docs/PLAN.md` §1 (hinge row), §2 (loop, segment rule), §4 items 2 an
 `docs/research/SYNTHESIS-2026-09.md` Q7; the existing scaffold (`project.yml`,
 `StoryCue/DuoSupport.swift`, `StoryCueTests/`, `StoryCueDuoTests/`).
 
+**Corrected pre-dispatch (2026-09-22):** `SegmentEndReason`, `CaptureInterruptionReason`,
+`SegmentOutcome` are now `Codable` (were `Equatable`-only). `Segment` declares `Codable`
+and stores `endReason`/`outcome` of these types — synthesis needs every stored property
+Codable, so the original declarations would not compile.
+
 ## Scope
 
 **In scope** (bulk implementation → `/orchestrate`, Kimi executor, Sol audits the diff):
@@ -59,7 +64,7 @@ This has zero platform dependency, which is what makes `MockCaptureService` and
 ```swift
 enum HingeStatus: Equatable { case closed, partiallyOpen, fullyOpen }   // nil elsewhere = no hinge
 
-enum SegmentEndReason: Equatable {
+enum SegmentEndReason: Equatable, Codable {
     case userPause, userStop
     case hingeClosed, accessoryWithdrawn
     case audioInterruption, captureInterruption(CaptureInterruptionReason)
@@ -67,12 +72,12 @@ enum SegmentEndReason: Equatable {
     case thermalShutdown, runtimeError, mediaServicesReset, directionChanged
 }
 
-enum CaptureInterruptionReason: Equatable {
+enum CaptureInterruptionReason: Equatable, Codable {
     case audioDeviceInUseByAnotherClient, videoDeviceInUseByAnotherClient
     case videoDeviceNotAvailableInBackground, videoDeviceNotAvailableDueToSystemPressure
 }
 
-enum SegmentOutcome: Equatable { case saved(url: URL), failed(kept: Bool) }
+enum SegmentOutcome: Equatable, Codable { case saved(url: URL), failed(kept: Bool) }
 
 struct Segment: Equatable, Codable {
     let id: UUID
