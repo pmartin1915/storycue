@@ -186,8 +186,9 @@ final class SessionStore {
          background: any BackgroundTaskRunner,
          now: Date = Date())
 
-    func start()                                     // begins consuming capture.events; idempotent
-    func stop()                                      // cancels the event pump and any ticker
+    func start()                                     // begins consuming capture.events ONLY (no ticker); idempotent
+    func startTicker()                               // 1 Hz wall-clock tick(now: Date()); S2a's view calls it; tests never do
+    func stop()                                      // cancels the event pump and the ticker
     func send(_ event: SessionEvent)                 // reduce + enqueue effects
     func tick(now: Date)                             // updates `now`; sends .segmentCapReached once when elapsed >= cap
     func prepareCapture() async                      // auth check/request, configureSession, sets captureAvailability + hasAudioInput
@@ -229,8 +230,11 @@ Rules:
 4. `elapsedInSegment` = `now.timeIntervalSince(segment.startedAt)` for the `.recording` segment
    (the reducer stamps `startedAt` with the wall clock; tests derive synthetic `now` values from the
    recorded segment's actual `startedAt`). `tick(now:)`: sets `now`; if phase is `.recording(id)` and `elapsedInSegment >= segmentCap`
-   and `id` is not in `capNotifiedSegmentIDs` (insert it), `send(.segmentCapReached)`. Production calls it from a
-   1 Hz ticker started by `start()`; tests call it directly with synthetic dates.
+   and `id` is not in `capNotifiedSegmentIDs` (insert it), `send(.segmentCapReached)`. Production calls it from the
+   1 Hz ticker started by `startTicker()` — deliberately separate from `start()`, because tests
+   need the event pump but a running wall-clock ticker would overwrite their synthetic `now`
+   between `tick(now:)` and the assertion (flaky on a 10×-billed CI). Tests call `start()` and
+   `tick(now:)` directly, never `startTicker()`.
 5. `prepareCapture()` (safe to call repeatedly; the real service never re-prompts a determined
    state): `authorization = await capture.requestAuthorization()`; camera not
    `.authorized` → `.notAuthorized`, stop. Else `try await capture.configureSession()` →
