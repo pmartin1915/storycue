@@ -62,6 +62,7 @@ targets:
       - target: StoryCue
     settings:
       base:
+        PRODUCT_NAME: StoryCueTests
         PRODUCT_BUNDLE_IDENTIFIER: dev.pmartin1915.storycue.tests
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/StoryCue.app/StoryCue
         BUNDLE_LOADER: $(TEST_HOST)
@@ -80,6 +81,7 @@ targets:
       - target: StoryCue
     settings:
       base:
+        PRODUCT_NAME: StoryCueDuoTests
         PRODUCT_BUNDLE_IDENTIFIER: dev.pmartin1915.storycue.duotests
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/StoryCue.app/StoryCue
         BUNDLE_LOADER: $(TEST_HOST)
