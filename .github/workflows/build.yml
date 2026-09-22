@@ -3,6 +3,8 @@ name: Build & Test
 on:
   push:
     branches: [main]
+    # Docs/state commits don't compile anything; each skipped run saves ~50 billed minutes.
+    paths-ignore: ['docs/**', 'ai/**', '**/*.md']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -24,41 +26,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # One Xcode for the whole job. Every later step inherits DEVELOPER_DIR, so the SDK
-      # probe below and the build cannot disagree about which toolchain they mean.
+      # Xcodes are chosen by channel and SDK, not by folder-name sort: the xcode-27 image
+      # rolls out gradually, and `sort -V | tail -1` gave a beta on one run and the release
+      # on the next (runs 35759964133 / 35769450879). The baseline lane is always the newest
+      # RELEASE Xcode -- the one deploy archives with. The Duo lane uses its own Xcode.
       - name: Select Xcode
         run: |
-          XCODE_PATH=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_PATH" ]; then echo "No Xcode found"; exit 1; fi
-          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
-          echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
-          echo "Using: $XCODE_PATH"
-          xcodebuild -version
-          swift --version
+          source .github/scripts/select-xcode.sh   # sets RELEASE_XCODE / DUO_XCODE here and in $GITHUB_ENV
+          sudo xcode-select -s "$RELEASE_XCODE/Contents/Developer"
+          echo "DEVELOPER_DIR=$RELEASE_XCODE/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Using: $RELEASE_XCODE"
+          DEVELOPER_DIR="$RELEASE_XCODE/Contents/Developer" xcodebuild -version
 
       # Two separate facts, printed separately, because they land on the runner image on
-      # different days: (1) does the iphoneos SDK carry the 27.1 headers, (2) does simctl
-      # know a Duo device type. Only (1) sets the compile flag.
+      # different days: (1) does some Xcode carry the 27.1 iphoneos SDK, (2) does that Xcode's
+      # simctl know a Duo device type. Only (1) turns the Duo lane on.
       - name: Duo SDK gate
         run: |
-          SDK_VER=$(xcrun --sdk iphoneos --show-sdk-version)
-          case "$SDK_VER" in *.*) ;; *) SDK_VER="$SDK_VER.0" ;; esac
-          MAJOR=${SDK_VER%%.*}; REST=${SDK_VER#*.}; MINOR=${REST%%.*}
-          if [ "$MAJOR" -gt 27 ] || { [ "$MAJOR" -eq 27 ] && [ "$MINOR" -ge 1 ]; }; then DUO_SDK=1; else DUO_SDK=0; fi
-          if xcrun simctl list devicetypes | grep -qi duo; then DUO_SIM=1; else DUO_SIM=0; fi
+          if [ -n "$DUO_XCODE" ]; then DUO_SDK=1; else DUO_SDK=0; fi
+          if [ $DUO_SDK = 1 ] && DEVELOPER_DIR="$DUO_XCODE/Contents/Developer" xcrun simctl list devicetypes | grep -qi duo; then DUO_SIM=1; else DUO_SIM=0; fi
           {
             echo "## Duo gate"
-            echo "- iphoneos SDK version: **$SDK_VER**"
-            echo "- Duo SDK headers (>= 27.1): **$([ $DUO_SDK = 1 ] && echo YES || echo NO)** -> compile flag DUO_SDK $([ $DUO_SDK = 1 ] && echo SET || echo NOT SET)"
+            echo "- baseline iphoneos SDK version: **$(xcrun --sdk iphoneos --show-sdk-version)**"
+            echo "- Duo SDK headers (>= 27.1): **$([ $DUO_SDK = 1 ] && echo YES || echo NO)** -> Duo lane $([ $DUO_SDK = 1 ] && echo "RUNS on $(basename "$DUO_XCODE")" || echo SKIPPED)"
             echo "- Duo simulator device type present: **$([ $DUO_SIM = 1 ] && echo YES || echo NO)**"
-            echo "- A green run with the flag NOT SET is the baseline recorder only; it proves nothing about the Duo path."
+            echo "- A green run with the Duo lane skipped is the baseline recorder only; it proves nothing about the Duo path."
           } | tee -a "$GITHUB_STEP_SUMMARY"
           echo "DUO_SDK=$DUO_SDK" >> "$GITHUB_ENV"
           echo "DUO_SIM=$DUO_SIM" >> "$GITHUB_ENV"
 
       - name: Install XcodeGen
         run: |
-          curl -sL https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip -o /tmp/xcodegen.zip
+          curl -sL https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip -o /tmp/xcodegen.zip
           unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
           XCODEGEN_BIN=$(find /tmp/xcodegen -name "xcodegen" -type f | head -1)
           sudo cp "$XCODEGEN_BIN" /usr/local/bin/xcodegen
@@ -98,6 +97,9 @@ jobs:
         if: env.DUO_SDK == '1'
         run: |
           set -o pipefail
+          export DEVELOPER_DIR="$DUO_XCODE/Contents/Developer"
+          echo "Using: $DUO_XCODE"
+          xcodebuild -version
           for t in StoryCue StoryCueTests StoryCueDuoTests; do
             echo "== $t =="
             xcodebuild -showBuildSettings -project StoryCue.xcodeproj -target "$t" -configuration Debug \
@@ -110,6 +112,19 @@ jobs:
             -configuration Debug \
             -resultBundlePath "$RUNNER_TEMP/duo.xcresult" \
             STORYCUE_DUO_CONDITIONS="DUO_SDK" \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify
+
+      # Debug-only CI can't see Release-only breakage (e.g. a non-DEBUG caller of the
+      # #if DEBUG MockCaptureService). Unsigned Release compile with the allowlisted Xcode.
+      - name: Release compile (unsigned, device SDK)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project StoryCue.xcodeproj \
+            -scheme StoryCue \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             | xcbeautify
 

@@ -12,6 +12,11 @@ on:
         required: true
         default: false
         type: boolean
+      duo:
+        description: 'Archive the Duo build (needs a release Xcode with the iOS 27.1+ SDK)'
+        required: true
+        default: false
+        type: boolean
   push:
     tags:
       - 'v*'
@@ -35,25 +40,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Always an App-Review-allowlisted Xcode build (select-xcode.sh): beta Xcodes may go to
+      # TestFlight but not to App Review, and the image may carry a beta that sorts higher.
       - name: Select Xcode
         run: |
-          XCODE_PATH=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_PATH" ]; then echo "No Xcode found"; exit 1; fi
-          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
-          echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
-          echo "Using: $XCODE_PATH"
-          xcodebuild -version
+          source .github/scripts/select-xcode.sh
+          sudo xcode-select -s "$RELEASE_XCODE/Contents/Developer"
+          echo "DEVELOPER_DIR=$RELEASE_XCODE/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Using: $RELEASE_XCODE"
+          DEVELOPER_DIR="$RELEASE_XCODE/Contents/Developer" xcodebuild -version
 
+      # A Duo archive needs BOTH an allowlisted Xcode with the 27.1 SDK AND an explicit request
+      # (dispatch input duo=true). A tag push always archives the baseline build, so a
+      # release 27.1 Xcode appearing on the image can't ship untested Duo code by surprise.
       - name: Duo SDK gate
+        env:
+          DUO_REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.duo == true }}
         run: |
           SDK_VER=$(xcrun --sdk iphoneos --show-sdk-version)
           case "$SDK_VER" in *.*) ;; *) SDK_VER="$SDK_VER.0" ;; esac
           MAJOR=${SDK_VER%%.*}; REST=${SDK_VER#*.}; MINOR=${REST%%.*}
-          if [ "$MAJOR" -gt 27 ] || { [ "$MAJOR" -eq 27 ] && [ "$MINOR" -ge 1 ]; }; then DUO_SDK=1; DUO_CONDITIONS="DUO_SDK"; else DUO_SDK=0; DUO_CONDITIONS=""; fi
+          if [ "$MAJOR" -gt 27 ] || { [ "$MAJOR" -eq 27 ] && [ "$MINOR" -ge 1 ]; }; then HAS_SDK=1; else HAS_SDK=0; fi
+          if [ "$DUO_REQUESTED" = true ] && [ $HAS_SDK = 0 ]; then
+            echo "duo=true requested but the release Xcode's iphoneos SDK is $SDK_VER (< 27.1); refusing." >&2
+            exit 1
+          fi
+          if [ "$DUO_REQUESTED" = true ]; then DUO_SDK=1; DUO_CONDITIONS="DUO_SDK"; else DUO_SDK=0; DUO_CONDITIONS=""; fi
           {
             echo "## Duo gate"
-            echo "- iphoneos SDK version: **$SDK_VER**"
-            echo "- Duo SDK headers (>= 27.1): **$([ $DUO_SDK = 1 ] && echo YES || echo NO)** -> this archive is the **$([ $DUO_SDK = 1 ] && echo DUO || echo BASELINE)** build"
+            echo "- iphoneos SDK version (release Xcode): **$SDK_VER**"
+            echo "- Duo requested: **$DUO_REQUESTED** -> this archive is the **$([ $DUO_SDK = 1 ] && echo DUO || echo BASELINE)** build"
             echo "- Build number: **$BUILD_NUMBER**"
           } | tee -a "$GITHUB_STEP_SUMMARY"
           echo "DUO_SDK=$DUO_SDK" >> "$GITHUB_ENV"
@@ -61,7 +77,7 @@ jobs:
 
       - name: Install XcodeGen
         run: |
-          curl -sL https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip -o /tmp/xcodegen.zip
+          curl -sL https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip -o /tmp/xcodegen.zip
           unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
           XCODEGEN_BIN=$(find /tmp/xcodegen -name "xcodegen" -type f | head -1)
           sudo cp "$XCODEGEN_BIN" /usr/local/bin/xcodegen
@@ -186,6 +202,14 @@ jobs:
             echo "Export discarded the build number override; refusing to upload."
             exit 1
           fi
+          # The toolchain that built what ships, read from the shipped artifact.
+          DT_XCODE_BUILD=$(/usr/libexec/PlistBuddy -c "Print :DTXcodeBuild" "$IPA_PLIST")
+          DT_SDK_BUILD=$(/usr/libexec/PlistBuddy -c "Print :DTSDKBuild" "$IPA_PLIST")
+          echo "Shipped DTXcodeBuild: $DT_XCODE_BUILD, DTSDKBuild: $DT_SDK_BUILD"
+          ALLOW="${ASC_REVIEW_XCODE_BUILDS:-27A266a}"
+          case " $ALLOW " in *" $DT_XCODE_BUILD "*) ;; *)
+            echo "::warning::.ipa built by Xcode $DT_XCODE_BUILD, not an App-Review-allowlisted build ($ALLOW); fine for TestFlight, not for submission." ;;
+          esac
           echo "IPA_FILE=$IPA_FILE" >> "$GITHUB_ENV"
 
       - name: Upload .ipa as artifact
