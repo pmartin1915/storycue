@@ -33,18 +33,24 @@ actor AVCaptureService: CaptureService {
         // NotificationCenter notifications arrive off the actor; consume each as an
         // AsyncSequence from inside the actor instead of capturing self in an observer
         // closure. These tasks live as long as the service (app lifetime).
+        //
+        // `Notification` itself is not Sendable (its `userInfo` is `[AnyHashable: Any]?`),
+        // so it cannot cross the `await` into the actor — pull the one Sendable value each
+        // handler needs out of `userInfo` here, synchronously, before hopping onto the actor.
         Task {
             for await notification in NotificationCenter.default.notifications(
                 named: AVAudioSession.interruptionNotification
             ) {
-                await self.handleAudioSessionInterruption(notification)
+                let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+                await self.handleAudioSessionInterruption(rawType: rawType)
             }
         }
         Task {
             for await notification in NotificationCenter.default.notifications(
                 named: AVCaptureSession.wasInterruptedNotification
             ) {
-                await self.handleCaptureInterruptionBegan(notification)
+                let rawReason = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int
+                await self.handleCaptureInterruptionBegan(rawReason: rawReason)
             }
         }
         Task {
@@ -58,7 +64,8 @@ actor AVCaptureService: CaptureService {
             for await notification in NotificationCenter.default.notifications(
                 named: AVCaptureSession.runtimeErrorNotification
             ) {
-                await self.handleRuntimeError(notification)
+                let error = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError
+                await self.handleRuntimeError(error: error)
             }
         }
     }
@@ -156,11 +163,10 @@ actor AVCaptureService: CaptureService {
         continuation.yield(.segmentFinished(segmentID: segmentID, outcome: .failed(kept: kept)))
     }
 
-    private func handleAudioSessionInterruption(_ notification: Notification) {
+    private func handleAudioSessionInterruption(rawType: UInt?) {
         // AVAudioSession.interruptionNotification carries no CaptureInterruptionReason —
         // that type models AVCaptureSession's interruption reasons, a different API.
-        guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
+        guard let rawType, let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
         switch type {
         case .began:
             continuation.yield(.audioInterruptionBegan)
@@ -171,9 +177,8 @@ actor AVCaptureService: CaptureService {
         }
     }
 
-    private func handleCaptureInterruptionBegan(_ notification: Notification) {
-        guard let rawReason = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int,
-              let reason = AVCaptureSession.InterruptionReason(rawValue: rawReason) else { return }
+    private func handleCaptureInterruptionBegan(rawReason: Int?) {
+        guard let rawReason, let reason = AVCaptureSession.InterruptionReason(rawValue: rawReason) else { return }
         let mapped: CaptureInterruptionReason
         switch reason {
         case .audioDeviceInUseByAnotherClient:
@@ -194,8 +199,8 @@ actor AVCaptureService: CaptureService {
         continuation.yield(.captureInterruptionEnded)
     }
 
-    private func handleRuntimeError(_ notification: Notification) {
-        guard let error = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError else { return }
+    private func handleRuntimeError(error: AVError?) {
+        guard let error else { return }
         if error.code == .mediaServicesWereReset {
             continuation.yield(.mediaServicesReset)
         } else {
