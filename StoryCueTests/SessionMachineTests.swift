@@ -541,18 +541,21 @@ final class SessionMachineTests: XCTestCase {
         let keptFailed = segment(UUID(), outcome: .failed(kept: true))
         let neverFinished = segment(UUID(), outcome: nil)   // nil-outcome: same as dropped
 
+        // Array order deliberately does not match questionID sort order, so a manifest
+        // implementation that (incorrectly) sorted by questionID instead of preserving
+        // state.clips order would fail this assertion.
         let clips = [
+            Clip(questionID: "parents.003", segments: [saved2]),
             Clip(questionID: "parents.001", segments: [saved1, dropped]),
             Clip(questionID: "parents.002", segments: [keptFailed, neverFinished]),
-            Clip(questionID: "parents.003", segments: [saved2]),
         ]
         let state = makeState(clips: clips)
 
         let manifest = exportManifest(for: state)
         XCTAssertEqual(manifest, [
+            ClipManifestEntry(questionID: "parents.003", segments: [saved2]),
             ClipManifestEntry(questionID: "parents.001", segments: [saved1]),
             ClipManifestEntry(questionID: "parents.002", segments: [keptFailed]),
-            ClipManifestEntry(questionID: "parents.003", segments: [saved2]),
         ])
     }
 }

@@ -23,7 +23,6 @@ actor AVCaptureService: CaptureService {
     private var recordingDelegate: MovieRecordingDelegate?
     private var pressureObservation: NSKeyValueObservation?
     private var configured = false
-    private var activeSegmentID: UUID?
 
     init() {
         var continuation: AsyncStream<CaptureServiceEvent>.Continuation!
@@ -123,7 +122,6 @@ actor AVCaptureService: CaptureService {
             throw CaptureServiceError.deviceUnavailable
         }
         let url = try makeSegmentFileURL(id: id)
-        activeSegmentID = id
         output.startRecording(to: url, recordingDelegate: delegate)
     }
 
@@ -135,18 +133,23 @@ actor AVCaptureService: CaptureService {
 
     /// `AVCaptureMovieFileOutput` finish delegate — arrives on the capture session's private
     /// queue, forwarded here via a Sendable closure hop back onto the actor.
+    ///
+    /// The segment ID is recovered from `url` (`makeSegmentFileURL` names the file
+    /// `<id>.mov`), not from actor state: a single mutable "active segment" property can't
+    /// tell two recordings apart when the reducer's `runtimeError` escape hatch (acceptance
+    /// rows 20/21) moves on to a new segment before this delegate has fired for the old
+    /// one — a stored ID would either mislabel the late callback as the new segment or, after
+    /// being cleared by that mislabeled callback, silently drop the new segment's own.
+    /// `mediaServicesReset` is reported only via `handleRuntimeError` (the notification is the
+    /// documented source, per the header above) — this path always reports a segment outcome.
     private func handleRecordingFinished(url: URL, error: Error?) {
-        guard let segmentID = activeSegmentID else { return }
-        activeSegmentID = nil
+        guard let segmentID = UUID(uuidString: url.deletingPathExtension().lastPathComponent) else { return }
 
-        guard let error else {
+        guard error != nil else {
             continuation.yield(.segmentFinished(segmentID: segmentID, outcome: .saved(url: url)))
             return
         }
 
-        if let avError = error as? AVError, avError.code == .mediaServicesWereReset {
-            continuation.yield(.mediaServicesReset)
-        }
         // The concrete meaning of "the file is kept even when the callback reports an
         // error": kept is decided by whether the partial file actually exists on disk.
         let kept = FileManager.default.fileExists(atPath: url.path)
