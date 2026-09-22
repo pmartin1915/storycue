@@ -444,7 +444,7 @@ final class SessionMachineTests: XCTestCase {
 
         let url = URL(fileURLWithPath: "/tmp/segment.mov")
         let (newState, effects) = SessionMachine.reduce(
-            finishing, .fileOutputFinished(segmentID: segment.id, outcome: .saved(url: url))
+            finishing.0, .fileOutputFinished(segmentID: segment.id, outcome: .saved(url: url))
         )
         XCTAssertEqual(newState.phase, .idle)                  // not .paused — nothing in progress for the new question
         XCTAssertEqual(newState.questionIndex, 1)
@@ -458,7 +458,7 @@ final class SessionMachineTests: XCTestCase {
         assertFinishing(finishing, expectedID: segment.id, expectedReason: .userStop, expectedEffects: [.stopSegment(segmentID: segment.id)])
 
         let (newState, _) = SessionMachine.reduce(
-            finishing, .fileOutputFinished(segmentID: segment.id, outcome: .saved(url: URL(fileURLWithPath: "/tmp/segment.mov")))
+            finishing.0, .fileOutputFinished(segmentID: segment.id, outcome: .saved(url: URL(fileURLWithPath: "/tmp/segment.mov")))
         )
         XCTAssertEqual(newState.phase, .idle)
         XCTAssertEqual(newState.questionIndex, lastIndex)      // clamped, never advances past the last question
