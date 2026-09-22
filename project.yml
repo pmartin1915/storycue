@@ -15,12 +15,20 @@ settings:
     DEVELOPMENT_TEAM: NN8F5WX25R
     # Empty by default. CI passes STORYCUE_DUO_CONDITIONS=DUO_SDK on the xcodebuild command
     # line only when the selected Xcode's iphoneos SDK is >= 27.1 (see .github/workflows).
-    # Only the two targets below expand it; passing SWIFT_ACTIVE_COMPILATION_CONDITIONS
-    # directly would replace the inherited DEBUG and hit every target.
+    # Only the two targets below expand it, via $(inherited) picking up DEBUG from the
+    # project-level Debug config below.
     STORYCUE_DUO_CONDITIONS: ""
   configs:
     Debug:
       ENABLE_TESTABILITY: YES
+      # A hand-authored XcodeGen project does not get Xcode's project-template default of
+      # SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG for free (same class of gap as
+      # ENABLE_TESTABILITY above -- see STATE.md's build-config bug list). Without this,
+      # $(inherited) in the StoryCue/StoryCueDuoTests targets' SWIFT_ACTIVE_COMPILATION_CONDITIONS
+      # resolves to nothing, #if DEBUG never activates, and MockCaptureService.swift's whole
+      # #if DEBUG block compiles out -- "cannot find 'MockCaptureService' in scope" (found via
+      # actually running CI on week1-impl, run 35694706946).
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
 
 targets:
   StoryCue:
