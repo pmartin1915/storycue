@@ -52,8 +52,9 @@ first: "week 1 done" is the domain layer only -- no SessionStore, no screens, pl
 `ContentView`; the app records nothing yet. Resequenced to a single-screen 1.0 by 10-16, Duo
 path after (or 1.1):
 - [x] S0 done 2026-09-22 (see What's Done)
-- [ ] S1 `SessionStore` -> /orchestrate. **Spec written and Kimi-reviewed: `docs/S1-SESSIONSTORE-SPEC.md`** (folds all four deferred IDEAS items incl. the early-callback race, moves segments out of Caches). Next session dispatches it; check session-claims for a live storycue peer first (the week-1 `.orchestrate/spec.md` collision)
-- [ ] S2 UI (deck picker, consent, recorder, library, outer-preview debug panel)
+- [ ] S1 `SessionStore` -- **implemented, CI green, awaiting Sol's audit + merge.** Branch `s1-impl`, draft PR #2. Kimi drafted it (worktree `.orchestrate/wt/s1`); its wrapper shell was killed by Claude Code's low-memory reaper at ~3:34 PM but the kimi child had written every file, so the boss reviewed the worktree directly. Boss fixes in `e750bec`: actor stub setters, `await capture.events` through the existential, audio stream captures only the continuation, per-session notification streams matched by `ObjectIdentifier`, drain waits for 20 quiet yields. `790aff6`: mock `callLog` so the effect-order test can actually fail on order. Run `35782978602`: **87/87** (59 + 18 + 6 + 3 + 1), Release compile passed, first push. Sol was quota-locked until 4:46 PM. After Sol: `gh pr ready 2`, merge, remove `.orchestrate/wt/s1` and `.orchestrate/wt/week1`. Known-by-inspection, not by test: ledger `.writing` is recorded before capture start (`SessionStore.execute`, `.startSegment` case) -- the test can't observe cross-actor order and instrumenting the real ledger wasn't worth it.
+- [ ] S2a recorder UI -- **spec written and Kimi-reviewed: `docs/S2A-RECORDER-UI-SPEC.md`** (`6a29119`; 18 findings, 15 accepted, `docs/reviews/S2A-SPEC-REVIEW-2026-09-22.md`). Dispatch only after S1 merges (the worktree must fork from a HEAD containing S1). Pre-registered boss fix if CI says `AVCaptureSession` isn't Sendable: `@preconcurrency import AVFoundation` in `CameraPreview.swift` only.
+- [ ] S2b library (not specced; depends on S2a's `AppModel`)
 - [ ] S3 Export (stitch -> Files/Photos)
 - [ ] S4 Deck copy
 - [ ] S5 Rung 4b on the 16 Pro via TestFlight (needs Perry's operator acts, targeted 10-02..10-04)
