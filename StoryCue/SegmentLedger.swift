@@ -1,8 +1,10 @@
 import Foundation
 
-enum LedgerStatus: String, Codable { case writing, finished, orphaned }
+// Sendable is required because RecoveredSegment (SessionStore) carries an entry across the
+// ledger's actor boundary.
+enum LedgerStatus: String, Codable, Sendable { case writing, finished, orphaned }
 
-struct SegmentLedgerEntry: Codable, Equatable {
+struct SegmentLedgerEntry: Codable, Equatable, Sendable {
     let segmentID: UUID
     let questionID: String
     let fileURL: URL

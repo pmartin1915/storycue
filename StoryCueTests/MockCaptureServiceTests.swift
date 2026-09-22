@@ -25,6 +25,17 @@ final class MockCaptureServiceTests: XCTestCase {
         XCTAssertEqual(received, segmentIDs)
     }
 
+    func testRequestAuthorizationGrantsNotDetermined() async {
+        let service = MockCaptureService()
+        await service.setStubAuthorization(CaptureAuthorization(camera: .notDetermined, microphone: .notDetermined))
+
+        let granted = await service.requestAuthorization()
+
+        let requestAuthorizationCount = await service.requestAuthorizationCount
+        XCTAssertEqual(granted, CaptureAuthorization(camera: .authorized, microphone: .authorized))
+        XCTAssertEqual(requestAuthorizationCount, 1)
+    }
+
     func testStartStopSegmentCallsRecorded() async throws {
         let service = MockCaptureService()
         let segmentID = UUID()

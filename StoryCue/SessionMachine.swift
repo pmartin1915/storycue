@@ -14,6 +14,8 @@ enum SegmentEndReason: Equatable, Codable, Sendable {
     case audioInterruption, captureInterruption(CaptureInterruptionReason)
     case sceneResignedActive, sceneBackgrounded
     case thermalShutdown, runtimeError, mediaServicesReset, directionChanged
+    // S1: the 10-minute cap and early file-output completion (S1 spec §3 / §3b).
+    case segmentCapReached, outputEndedUnexpectedly
 }
 
 enum CaptureInterruptionReason: Equatable, Codable, Sendable {
@@ -63,6 +65,9 @@ enum SessionEvent: Equatable, Sendable {
     case sceneWillResignActive, sceneDidEnterBackground, sceneDidBecomeActive
     case thermalPressureCritical
     case runtimeError, mediaServicesReset, directionChanged
+    // S1: sent by SessionStore.tick(now:) once per segment past the cap; and when the
+    // background task expires (clears backgroundTaskActive so a later resign-active works).
+    case segmentCapReached, backgroundTaskExpired
 }
 
 enum SessionEffect: Equatable, Sendable {
@@ -99,6 +104,14 @@ enum SessionMachine {
             return advance(&state)
 
         case let .fileOutputFinished(segmentID, outcome):
+            // Early completion (S1 spec §3b): AVFoundation does not guarantee the finish
+            // delegate arrives AFTER the interruption/runtime-error notification that caused
+            // it. While .recording with a matching id, run the finish path now instead of
+            // wedging in .finishing waiting for a callback that already came. A different
+            // id while .recording is a stale callback and stays ignored (default rule).
+            if case let .recording(id) = state.phase, id == segmentID {
+                return finish(&state, segmentID: id, reason: .outputEndedUnexpectedly, outcome: outcome)
+            }
             // Only meaningful while .finishing with a matching ID; anything else is a
             // stale/duplicate callback and is ignored.
             guard case let .finishing(id, reason) = state.phase, id == segmentID else { return (state, []) }
@@ -191,6 +204,20 @@ enum SessionMachine {
             guard case let .recording(id) = state.phase else { return (state, []) }
             state.phase = .finishing(segmentID: id, reason: .directionChanged)
             return (state, [.stopSegment(segmentID: id)])
+
+        case .segmentCapReached:
+            // PLAN §2's 10-minute segment cap. The finish lands in .paused(.segmentCapReached)
+            // via the existing finish path — nothing resumes recording without a tap.
+            guard case let .recording(id) = state.phase else { return (state, []) }
+            state.phase = .finishing(segmentID: id, reason: .segmentCapReached)
+            return (state, [.stopSegment(segmentID: id)])
+
+        case .backgroundTaskExpired:
+            // Without this an expired task leaves the flag stuck true, blocking the next
+            // sceneWillResignActive and producing a spurious .endBackgroundTask later.
+            guard state.backgroundTaskActive else { return (state, []) }
+            state.backgroundTaskActive = false
+            return (state, [])
         }
     }
 

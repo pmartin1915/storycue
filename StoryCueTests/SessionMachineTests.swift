@@ -672,6 +672,93 @@ final class SessionMachineTests: XCTestCase {
         }
     }
 
+    // MARK: - S1 (docs/S1-SESSIONSTORE-SPEC.md §7)
+
+    func testSegmentCapFinishesSegment() {
+        let (state, segment) = recordingState()
+        assertFinishing(
+            SessionMachine.reduce(state, .segmentCapReached),
+            expectedID: segment.id,
+            expectedReason: .segmentCapReached,
+            expectedEffects: [.stopSegment(segmentID: segment.id)]
+        )
+    }
+
+    func testSegmentCapNoOpWhenNotRecording() {
+        let (_, segment) = recordingState()
+        let phases: [RecordingPhase] = [
+            .idle,
+            .paused(reason: .userPause),
+            .finishing(segmentID: segment.id, reason: .userPause),
+        ]
+        for phase in phases {
+            let state = makeState(phase: phase)
+            let (newState, effects) = SessionMachine.reduce(state, .segmentCapReached)
+            XCTAssertEqual(newState, state)
+            XCTAssertEqual(effects, [])
+        }
+    }
+
+    func testEarlyFileOutputFinishedWhileRecordingPausesAndPersists() {
+        let (state, segment) = recordingState()
+        let url = URL(fileURLWithPath: "/tmp/segment.mov")
+        let (newState, effects) = SessionMachine.reduce(
+            state, .fileOutputFinished(segmentID: segment.id, outcome: .saved(url: url))
+        )
+        XCTAssertEqual(newState.phase, .paused(reason: .outputEndedUnexpectedly))
+        XCTAssertEqual(newState.clips[0].segments[0].endReason, .outputEndedUnexpectedly)
+        XCTAssertEqual(newState.clips[0].segments[0].outcome, .saved(url: url))
+        XCTAssertEqual(effects, [.persistLedger(expectedPersistedClip(segment: segment, reason: .outputEndedUnexpectedly, outcome: .saved(url: url)))])
+    }
+
+    func testEarlyFinishThenLateInterruptionIsNoOp() {
+        let (recording, segment) = recordingState()
+        let url = URL(fileURLWithPath: "/tmp/segment.mov")
+        let (paused, _) = SessionMachine.reduce(
+            recording, .fileOutputFinished(segmentID: segment.id, outcome: .saved(url: url))
+        )
+        XCTAssertEqual(paused.phase, .paused(reason: .outputEndedUnexpectedly))
+        // The late interruption/runtime-error notification then arrives in .paused and is
+        // already a no-op under the existing guards — no buffering needed, no auto-resume.
+        for event in [SessionEvent.audioInterruptionBegan, SessionEvent.runtimeError] {
+            let (newState, effects) = SessionMachine.reduce(paused, event)
+            XCTAssertEqual(newState, paused, "\(event) after an early finish must be a no-op")
+            XCTAssertEqual(effects, [])
+        }
+    }
+
+    func testEarlyFinishEndsActiveBackgroundTask() {
+        let (recording, segment) = recordingState()
+        let state = makeState(
+            phase: recording.phase,
+            clips: recording.clips,
+            backgroundTaskActive: true
+        )
+        let url = URL(fileURLWithPath: "/tmp/segment.mov")
+        let (newState, effects) = SessionMachine.reduce(
+            state, .fileOutputFinished(segmentID: segment.id, outcome: .saved(url: url))
+        )
+        XCTAssertEqual(newState.phase, .paused(reason: .outputEndedUnexpectedly))
+        XCTAssertFalse(newState.backgroundTaskActive)
+        XCTAssertEqual(effects, [
+            .persistLedger(expectedPersistedClip(segment: segment, reason: .outputEndedUnexpectedly, outcome: .saved(url: url))),
+            .endBackgroundTask,
+        ])
+    }
+
+    func testBackgroundTaskExpiredClearsFlag() {
+        let (_, segment) = recordingState()
+        let active = makeState(phase: .recording(segmentID: segment.id), backgroundTaskActive: true)
+        let (newState, effects) = SessionMachine.reduce(active, .backgroundTaskExpired)
+        XCTAssertFalse(newState.backgroundTaskActive)
+        XCTAssertEqual(newState.phase, active.phase)
+        XCTAssertEqual(effects, [])
+        // Already false: no-op.
+        let (again, effects2) = SessionMachine.reduce(newState, .backgroundTaskExpired)
+        XCTAssertEqual(again, newState)
+        XCTAssertEqual(effects2, [])
+    }
+
     func testTapGuardRejectionsOutsideFinishing() {
         let pausedState = makeState(phase: .paused(reason: .userPause))
         let cases: [(state: SessionState, event: SessionEvent)] = [
