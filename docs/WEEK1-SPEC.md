@@ -181,6 +181,12 @@ is no previous-question event or backward navigation in week 1, regardless of `m
   `segmentID` does **not** match (a stale/duplicate callback from an already-superseded
   segment) and including `tapNextQuestion`/`tapSkip` (an advance tap during finishing is
   silently swallowed; there is no deferred-retry queue in week 1).
+  **Both exits also carry `.endBackgroundTask` when `backgroundTaskActive` is true at the
+  moment of exit** (in addition to `.persistLedger`, appended after it), and clear the
+  flag — regardless of which reason caused the `.finishing` or which of the two exits fired.
+  This is the *only* place `.endBackgroundTask` is ever emitted for a task that was
+  protecting an in-flight segment — see the background-task rules below for why it isn't
+  emitted any earlier.
 - **`fileOutputFinished` outside `.finishing`, or with a non-matching ID, is always
   ignored** (default rule) — covers races like: recording finishes on question A,
   `tapNextQuestion` starts question B's segment before A's `fileOutputFinished` callback
@@ -201,26 +207,44 @@ is no previous-question event or backward navigation in week 1, regardless of `m
   a segment regardless of phase — they only ever update `state.hinge`.
 - **Background-task pairing is tracked by `SessionState.backgroundTaskActive`, not by
   phase alone** (phase alone can't distinguish "task begun, then user tapped pause before
-  backgrounding" from "no task was ever begun"):
+  backgrounding" from "no task was ever begun"). **`.endBackgroundTask` is never emitted by
+  `sceneDidEnterBackground` itself** — only by the `.finishing`-exit rule above, once the
+  segment's file write has actually completed (`fileOutputFinished`/`runtimeError`).
+  Ending the task the moment `.stopSegment` is *requested* (rather than once the write is
+  confirmed done) would risk iOS suspending the app mid-write — the entire reason the task
+  exists is to cover that gap. `.beginBackgroundTask` and `.stopSegment` are still
+  requested promptly; only `.endBackgroundTask` is deferred to the write's actual
+  completion.
   - `sceneWillResignActive`: if `phase == .recording` **and** `!backgroundTaskActive`,
     emit `.beginBackgroundTask` and set `backgroundTaskActive = true`. Otherwise (already
     active — a duplicate notification — or not recording) it's a no-op: at most one
     background task is ever active.
-  - `sceneDidEnterBackground`: if `backgroundTaskActive`, emit `.endBackgroundTask`, clear
-    the flag, **and** if `phase == .recording` also finish the segment (`.finishing(id,
-    .sceneBackgrounded)` + `.stopSegment`) — the in-flight segment may have already been
-    finished by something else (e.g. the user tapped pause between resigning and
-    backgrounding) while the task was still active, in which case only
-    `.endBackgroundTask` fires. If `!backgroundTaskActive`, no-op (default rule) — nothing
-    to end, nothing to finish.
-  - `sceneDidBecomeActive`: if `backgroundTaskActive`, emit `.endBackgroundTask` and clear
-    the flag — this is the "resigned active, began a task, but returned to the foreground
-    without ever fully backgrounding" path; the begun task must still be closed here or it
-    leaks. If `!backgroundTaskActive`, no-op (default rule).
+  - `sceneDidEnterBackground`: if `backgroundTaskActive` **and** `phase == .recording`,
+    finish the segment (`.finishing(id, .sceneBackgrounded)`, effect `[.stopSegment]` only
+    — no `.endBackgroundTask` here; it comes later from the `.finishing`-exit rule).
+    Otherwise no-op (default rule): either no task is active, or a finish is already
+    in-flight/resolved from something else (e.g. the user tapped pause between resigning
+    and backgrounding) and the task will be (or already was) ended by that finish's own
+    exit, not by this event.
+  - `sceneDidBecomeActive`: if `backgroundTaskActive` **and** `phase == .recording` (the
+    task was begun on resign-active but the app returned to the foreground without ever
+    actually finishing anything — no backgrounding, no interruption, nothing), emit
+    `.endBackgroundTask` and clear the flag; this is the *only* case where
+    `sceneDidBecomeActive` isn't a no-op, since it's the only path where nothing else will
+    ever end the task otherwise. If `backgroundTaskActive` but `phase != .recording` (a
+    finish is still in-flight from the backgrounding), or `!backgroundTaskActive`: no-op
+    (default rule) — don't end the task early in the first case, nothing to end in the
+    second.
 - `mediaServicesReset` emits `.recreateCaptureSession` **regardless of phase** — the
   capture session itself is broken independent of what the reducer's phase says — but only
   finishes a segment (existing `.recording` row) when one is in flight; from `.idle` or
-  `.paused` it recreates the session with phase unchanged.
+  `.paused` it recreates the session with phase unchanged. Unlike the background-task
+  pairing above, `.stopSegment` and `.recreateCaptureSession` firing **together** here is
+  intentional and does not need to wait for a callback: `AVError.mediaServicesWereReset`
+  means the whole media subsystem is already torn down by the time this fires, so the
+  in-flight segment is already lost regardless of what `.stopSegment` does —
+  `.recreateCaptureSession` doesn't depend on its outcome the way `.endBackgroundTask`
+  depends on the write actually finishing.
 - `thermalPressureCritical` only applies from `.recording` (existing row) — from any other
   phase it is a no-op (default rule): nothing is being captured to throttle.
 - **`tapNextQuestion` and `tapSkip` are reducer-equivalent** — identical phase transitions
@@ -242,6 +266,10 @@ is no previous-question event or backward navigation in week 1, regardless of `m
 - `tapRecord` from `.idle` or `tapResume` from `.paused` both start a **new** `Segment`
   (fresh UUID, minted by the reducer per the ID-authority rule above) appended to the
   current question's `Clip`. Nothing ever appends to an already-finished segment.
+  `Segment.startedAt` is set to `Date()` read at the moment the reducer creates it — tests
+  asserting a new segment's shape must not assert exact `Date` equality; assert everything
+  else, and either ignore `startedAt` or assert it falls within the test's own execution
+  window.
 - If `SessionStore`'s execution of a `.startSegment` effect throws
   (`CaptureServiceError.deviceUnavailable`), that is handled by feeding a `runtimeError`
   event back into `reduce` — the reducer itself defines no separate "start failed" event or
@@ -294,17 +322,35 @@ protocol CaptureService: Actor {
 
 enum CaptureServiceEvent: Sendable, Equatable {
     case segmentFinished(segmentID: UUID, outcome: SegmentOutcome)
-    case interruptionBegan(CaptureInterruptionReason), interruptionEnded
+    case audioInterruptionBegan, audioInterruptionEnded
+    case captureInterruptionBegan(CaptureInterruptionReason), captureInterruptionEnded
+    case thermalPressureCritical
     case runtimeError, mediaServicesReset
 }
 
 enum CaptureServiceError: Error, Sendable { case deviceUnavailable }
 ```
 
-`CaptureServiceEvent.segmentFinished`'s `segmentID` is always the same ID `SessionStore`
-passed into `startSegment(id:for:)` — the service echoes it back, never generates its own.
-`SessionStore` maps this event to `SessionEvent.fileOutputFinished(segmentID:outcome:)`
-1:1.
+Five *different* real APIs feed this one stream, and each gets its own case — don't
+collapse audio-session and capture-session interruptions into one:
+- `AVAudioSession.interruptionNotification` (began/ended) → `audioInterruptionBegan`/
+  `audioInterruptionEnded`. Carries no `CaptureInterruptionReason` — that type's four
+  cases are `AVCaptureSession.wasInterruptedNotification`'s reasons, a different,
+  capture-session-level API, not an audio-session one.
+- `AVCaptureSession.wasInterruptedNotification` / its `.ended` counterpart →
+  `captureInterruptionBegan(CaptureInterruptionReason)` / `captureInterruptionEnded`.
+- KVO on `systemPressureState` (critical/shutdown level only, per the thermal note above)
+  → `thermalPressureCritical`.
+- `AVError.mediaServicesWereReset` → `mediaServicesReset`.
+- `AVCaptureMovieFileOutput`'s finish delegate → `segmentFinished`.
+
+`SessionStore` maps each case 1:1 to its same-named `SessionEvent` case
+(`audioInterruptionBegan → audioInterruptionBegan`, `captureInterruptionBegan(reason) →
+captureInterruptionBegan(reason)`, `thermalPressureCritical → thermalPressureCritical`,
+etc.) — `segmentFinished` is the one exception, mapping to
+`fileOutputFinished(segmentID:outcome:)`. `CaptureServiceEvent.segmentFinished`'s
+`segmentID` is always the same ID `SessionStore` passed into `startSegment(id:for:)` — the
+service echoes it back, never generates its own.
 
 - **`StoryCue/AVCaptureService.swift`** — `actor AVCaptureService: CaptureService`. Wires
   `AVCaptureMovieFileOutput`'s finish delegate, `AVAudioSession.interruptionNotification`,
@@ -404,9 +450,11 @@ is a platform-agnostic event even though only a Duo build ever sends it):
 | `.recording` | `captureInterruptionBegan(.videoDeviceInUseByAnotherClient)` | `.finishing(id, .captureInterruption(...))` | `.stopSegment` | `testCaptureInterruptionFinishesSegment` |
 | `.recording`, `!backgroundTaskActive` | `sceneWillResignActive` | unchanged phase; `backgroundTaskActive = true` | `.beginBackgroundTask` | `testResignActiveBeginsBackgroundTaskWithoutStopping` |
 | `.paused`/`.idle`/`.finishing`, or `.recording` with `backgroundTaskActive` already true | `sceneWillResignActive` | unchanged | none | `testResignActiveNoOpWhenNotRecordingOrAlreadyTracked` |
-| `.recording`, `backgroundTaskActive` | `sceneDidEnterBackground` | `.finishing(id, .sceneBackgrounded)`; `backgroundTaskActive = false` | `.stopSegment`, `.endBackgroundTask` | `testBackgroundEntryFinishesSegment` |
-| `!backgroundTaskActive` (any phase) | `sceneDidEnterBackground` | unchanged | none | `testBackgroundEntryNoOpWhenNoActiveTask` |
-| `backgroundTaskActive` (any phase, task begun but never entered background) | `sceneDidBecomeActive` | unchanged phase; `backgroundTaskActive = false` | `.endBackgroundTask` | `testBecomeActiveEndsUnclosedBackgroundTask` |
+| `.recording`, `backgroundTaskActive` | `sceneDidEnterBackground` | `.finishing(id, .sceneBackgrounded)`; `backgroundTaskActive` unchanged (still `true` — ended later, not here) | `.stopSegment` only | `testBackgroundEntryFinishesSegmentWithoutEndingTaskYet` |
+| `!backgroundTaskActive`, or `backgroundTaskActive` with `phase != .recording` | `sceneDidEnterBackground` | unchanged | none | `testBackgroundEntryNoOpWhenNoActiveTaskOrAlreadyFinishing` |
+| `.finishing(id, .sceneBackgrounded)`, `backgroundTaskActive` | `fileOutputFinished(.saved)` | `.paused(.sceneBackgrounded)`; `backgroundTaskActive = false` | `.persistLedger`, `.endBackgroundTask` | `testFileOutputFinishedEndsBackgroundTaskWhenActive` |
+| `backgroundTaskActive`, `phase == .recording` (resigned active, task begun, returned to foreground without ever backgrounding or finishing) | `sceneDidBecomeActive` | unchanged phase; `backgroundTaskActive = false` | `.endBackgroundTask` | `testBecomeActiveEndsUnclosedBackgroundTaskWhenStillRecording` |
+| `backgroundTaskActive`, `phase == .finishing` (a finish from the backgrounding is still in flight) | `sceneDidBecomeActive` | unchanged | none | `testBecomeActiveDoesNotEndTaskWhileFinishStillInFlight` |
 | `.recording` | `thermalPressureCritical` | `.finishing(id, .thermalShutdown)` | `[.reduceFrameRate, .stopSegment]` (both, in that order, on the one event — see note below) | `testThermalCriticalFinishesSegment` |
 | `.recording` | `runtimeError` | `.finishing(id, .runtimeError)` | `.stopSegment` | `testRuntimeErrorFinishesSegment` |
 | `.finishing(id, reason)`, `reason` ≠ `.userStop` | `runtimeError` | `.paused(reason)`, segment recorded with **original** `reason` and `outcome = .failed(kept: true)` | `.persistLedger` | `testRuntimeErrorEscapesWedgedFinishing` |
