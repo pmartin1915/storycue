@@ -59,3 +59,17 @@ notes.
 | 7 | S9 claims rungs 2–3 but the Duo lane runs on `iPhone 17`; rung 3 needs a UI-test target on a Duo simulator destination gated by `DUO_SIM` | **accept** — S9 now claims rung 2 until that lane exists | S9 |
 | 8 | Deploy verifies only `CFBundleVersion`; also verify `DTXcodeBuild`/`DTSDKBuild`, validate, poll ASC processing. Pin XcodeGen (StoryCue downloaded `latest`) | **partial** — `DTXcodeBuild`/`DTSDKBuild` read from the shipped `.ipa` and warned if not allowlisted (both repos); XcodeGen pinned to 2.46.0 in both StoryCue workflows. ASC processing poll → **deferred** to `ai/IDEAS.md` (needs an authenticated ASC API loop; Perry sees processing state in ASC anyway) | S0 |
 | 9 | Retold STATE still had the duplicated old week-1 ordering | **already fixed** in the same session before the review landed | — |
+
+## Kimi — S1 spec pre-dispatch review (`docs/S1-SESSIONSTORE-SPEC.md`)
+
+`clink cli_name=kimi role=codereviewer`, 385 s, return_code 0, 14 tool calls, traced all 45
+existing reducer tests plus the new rows. **All 13 findings accepted and folded into the spec**:
+blocking — `SegmentLedgerEntry`/`LedgerStatus` need `Sendable`; the `AVCaptureService()` call in
+the existing test must pass a temp directory; `testStartFailureFeedsRuntimeError` expected an
+unreachable `.paused` (one `runtimeError` from `.recording` stops at `.finishing` — verified
+against `SessionMachine.swift:166-174`); `@MainActor` expiration closure can't feed UIKit →
+`@Sendable`. Should-fix — "two rows" vs five names; background-task expiry left
+`backgroundTaskActive` stuck (new `.backgroundTaskExpired` event, sixth reducer row); ordered
+`callLog` on the fake; recreate-failure availability rule; named `capNotifiedSegmentIDs`;
+`startedAt` lookup; directory creation owner; consumer `Task` inherits the main actor;
+`elapsedInSegment` definition. Nits folded too.

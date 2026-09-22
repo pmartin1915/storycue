@@ -23,7 +23,9 @@ touched** in S1 — the store is exercised only by tests this step.
 
 `AVCaptureService.makeSegmentFileURL` writes to `Caches/segments/`. **iOS purges Caches under
 storage pressure**, so a user's recording could vanish silently — the opposite of this app's
-promise. New home: `Application Support/Segments/`, created on first use. Files are left
+promise. New home: `Application Support/Segments/`. `SegmentFiles.url(for:in:)` never creates
+directories; `AVCaptureService.startSegment` creates the injected directory
+(`createDirectory(withIntermediateDirectories: true)`) if missing. Files are left
 eligible for the user's own device backup (not `isExcludedFromBackup`); the privacy policy
 (S6) says so.
 
@@ -71,10 +73,12 @@ protocol CaptureService: Actor {
   `.notDetermined` media types.
 - `configureSession()` throws `CaptureServiceError.notAuthorized` (new case) if camera auth is
   not `.authorized`, **before** any device lookup — so the S2a UI can tell "denied" from "no
-  camera". The existing simulator test still expects `.deviceUnavailable`: on the simulator
-  camera auth is not `.authorized`, so **update `testConfigureSessionThrowsWhenDeviceUnavailable`
-  to accept either `.deviceUnavailable` or `.notAuthorized`** (rename:
-  `testConfigureSessionThrowsWithoutUsableCamera`). No other existing test changes.
+  camera". On the simulator camera auth is not `.authorized`, so the existing test will now see
+  `.notAuthorized`: **update `testConfigureSessionThrowsWhenDeviceUnavailable`** — rename it
+  `testConfigureSessionThrowsWithoutUsableCamera`, accept either `.deviceUnavailable` or
+  `.notAuthorized`, and construct the service with a temp directory:
+  `AVCaptureService(segmentDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))`.
+  No other existing test changes.
 - Microphone stays best-effort, but the fact is now exposed as `hasAudioInput` (Kimi 3 — the UI
   must show a "no audio" state instead of silently recording video-only).
 - **Audio session:** delete the manual `try? AVAudioSession.sharedInstance().setCategory(...)`.
@@ -93,6 +97,9 @@ protocol CaptureService: Actor {
   session and cancelled by `recreateSession()`. The `AVAudioSession` interruption stream stays
   app-wide (started in `init`). No `@unchecked Sendable`, no `nonisolated(unsafe)`.
 - `CaptureServiceError` gains `notAuthorized`.
+- `SegmentLedgerEntry` and `LedgerStatus` gain `Sendable` (all members already are). Required:
+  `RecoveredSegment` is `Sendable` and `orphanedEntries()` returns entries across an actor
+  boundary.
 
 `MockCaptureService` (still whole-file `#if DEBUG`): settable `stubAuthorization`,
 `stubHasAudioInput` (default `true`), `stubStartError: CaptureServiceError?`,
@@ -107,6 +114,10 @@ protocol CaptureService: Actor {
   every other phase: no-op. The finish lands in `.paused(.segmentCapReached)` via the existing
   `finish` path — **no auto-resume**; PLAN §2: nothing resumes recording without a tap.
 - The store, not the reducer, owns time: see `tick(now:)` below.
+- **Background-task expiry:** `SessionEvent` gains `.backgroundTaskExpired`. Reducer: if
+  `!state.backgroundTaskActive` → no-op; else `backgroundTaskActive = false`, phase unchanged, no
+  effects. Without it an expired task leaves the flag stuck `true`, blocking the next
+  `sceneWillResignActive` and producing a spurious `.endBackgroundTask` later.
 
 ## 3b. Early file-output completion (data-loss race — `ai/IDEAS.md` 2026-09-22, Sol strategy review 3)
 
@@ -128,14 +139,14 @@ outcome is never recorded.
 
 ```swift
 @MainActor protocol BackgroundTaskRunner: AnyObject {
-    func begin(expiration: @escaping @MainActor () -> Void)
+    func begin(expiration: @escaping @Sendable () -> Void)   // @Sendable, not @MainActor: UIKit's expirationHandler is an unisolated () -> Void
     func end()
 }
 ```
 Production `UIKitBackgroundTaskRunner` wraps `UIApplication.shared.beginBackgroundTask(withName:expirationHandler:)`
 / `endBackgroundTask`, holding at most one identifier; `end()` with none held is a no-op.
-Test double `FakeBackgroundTaskRunner` (in the test target) records `beginCount`, `endCount`,
-and exposes `fireExpiration()`.
+Test double `FakeBackgroundTaskRunner` (in the test target) records `beginCount`, `endCount`, an
+ordered `callLog: [String]` of `"begin"`/`"end"`, and exposes `fireExpiration()`.
 
 ## 5. `SessionStore`
 
@@ -166,6 +177,7 @@ final class SessionStore {
     var canResume: Bool { get }                      // phase is .paused
 
     static let segmentCap: TimeInterval = 600
+    private var capNotifiedSegmentIDs: Set<UUID> = []   // one .segmentCapReached per segment id
 
     init(deck: Deck,
          capture: any CaptureService,
@@ -188,33 +200,39 @@ Rules:
 
 1. **Effects run strictly in order, FIFO across calls.** `send` reduces synchronously on the
    main actor (so `state` is never stale), then appends the effects to a single serial queue;
-   one consumer `Task` executes them one at a time with `await`. Two back-to-back `send`s can
+   one consumer `Task` executes them one at a time with `await`. The consumer `Task`, the event
+   pump and the ticker are plain `Task {}` created inside the `@MainActor` class, so they inherit
+   the main actor — **never `Task.detached`**; every `capture`/`ledger` call inside is `await`ed. Two back-to-back `send`s can
    never interleave their effects. (WEEK1-SPEC: "`[SessionEffect]` order is significant".)
 2. Event pump: `start()` iterates `capture.events`, maps 1:1 per WEEK1-SPEC
    (`segmentFinished → fileOutputFinished`), and calls `send`.
 3. Effect execution:
    - `.startSegment(id, q)`: **first** `ledger.record(SegmentLedgerEntry(segmentID: id,
-     questionID: q, fileURL: SegmentFiles.url(for: id, in: segmentDirectory), startedAt: <the
-     segment's startedAt from state>, status: .writing))`, **then**
+     questionID: q, fileURL: SegmentFiles.url(for: id, in: segmentDirectory), startedAt: <look the
+     segment up by id in state.clips; it is always present, fall back to now if not>, status: .writing))`, **then**
      `capture.startSegment(id:for:)`. Closes the IDEAS advisor gap: a crash mid-recording now
      leaves a `.writing` entry to find. If `startSegment` throws: `send(.runtimeError)`, and if
      the error is `.notAuthorized` also set `captureAvailability = .notAuthorized`. If
      `ledger.record` throws, still start the capture (losing crash-recovery for one segment
      beats losing the recording) and keep going.
    - `.stopSegment(id)`: `await capture.stopSegment(id)`.
-   - `.beginBackgroundTask`: `background.begin(expiration:)`; the expiration closure calls
-     `background.end()` (the system requires it) and nothing else.
+   - `.beginBackgroundTask`: `background.begin(expiration:)`; the expiration closure hops to the
+     main actor (`Task { @MainActor in ... }`, capturing the store weakly), calls
+     `background.end()` (the system requires it), then `send(.backgroundTaskExpired)`.
    - `.endBackgroundTask`: `background.end()`.
    - `.reduceFrameRate`: `await capture.reduceFrameRate()`.
    - `.recreateCaptureSession`: `try await capture.recreateSession()`; on success
-     `captureAvailability = .ready`; on throw `.unavailable` (or `.notAuthorized`). Never sends
+     `captureAvailability = .ready`; on throw: `CaptureServiceError.notAuthorized` → `.notAuthorized`, anything else → `.unavailable`. Never sends
      an event (phase may not be `.recording`).
    - `.persistLedger(clip)`: for each segment in `clip` whose `outcome != nil`,
      `try? await ledger.markFinished(segment.id)`. (`markFinished` is idempotent already.)
-4. `tick(now:)`: sets `now`; if phase is `.recording(id)` and `elapsedInSegment >= segmentCap`
-   and the cap hasn't been sent for `id`, `send(.segmentCapReached)`. Production calls it from a
+4. `elapsedInSegment` = `now.timeIntervalSince(segment.startedAt)` for the `.recording` segment
+   (the reducer stamps `startedAt` with the wall clock; tests derive synthetic `now` values from the
+   recorded segment's actual `startedAt`). `tick(now:)`: sets `now`; if phase is `.recording(id)` and `elapsedInSegment >= segmentCap`
+   and `id` is not in `capNotifiedSegmentIDs` (insert it), `send(.segmentCapReached)`. Production calls it from a
    1 Hz ticker started by `start()`; tests call it directly with synthetic dates.
-5. `prepareCapture()`: `authorization = await capture.requestAuthorization()`; camera not
+5. `prepareCapture()` (safe to call repeatedly; the real service never re-prompts a determined
+   state): `authorization = await capture.requestAuthorization()`; camera not
    `.authorized` → `.notAuthorized`, stop. Else `try await capture.configureSession()` →
    `.ready` and `hasAudioInput = await capture.hasAudioInput`; `.notAuthorized` / any other
    throw → `.notAuthorized` / `.unavailable`.
@@ -245,10 +263,10 @@ FakeBackgroundTaskRunner; `await store.waitForIdleEffects()` before assertions):
 | `testTapRecordRecordsLedgerWritingBeforeCaptureStart` | after `.tapRecord`: ledger has one `.writing` entry whose `fileURL == SegmentFiles.url(for: id, in: dir)`; mock recorded the start with the same id |
 | `testSegmentFinishedEventMarksLedgerFinished` | simulate `.segmentFinished(id, .saved)` → phase `.paused`/`.idle` per reason; `orphanedEntries()` empty |
 | `testEffectsExecuteInOrderAcrossSends` | `.tapRecord` then immediately `.tapPause`: mock's recorded calls are start-then-stop, never reversed |
-| `testStartFailureFeedsRuntimeError` | `stubStartError = .deviceUnavailable`, `.tapRecord` → phase ends `.finishing(_, .runtimeError)` then (runtimeError escape) `.paused(.runtimeError)` |
+| `testStartFailureFeedsRuntimeError` | `stubStartError = .deviceUnavailable`, `.tapRecord`, drain → phase `.finishing(id, .runtimeError)` with one stop recorded (a single `runtimeError` from `.recording` stops there); then `send(.runtimeError)` again, drain → `.paused(.runtimeError)`, segment outcome `.failed(kept: true)` |
 | `testStartFailureNotAuthorizedSetsAvailability` | `stubStartError = .notAuthorized` → `captureAvailability == .notAuthorized` |
-| `testBackgroundTaskBeginsAndEndsAroundBackgroundedFinish` | record → `.sceneWillResignActive` → `.sceneDidEnterBackground` → simulate finish: `beginCount == 1`, `endCount == 1`, end after the finish |
-| `testBackgroundExpirationEndsTask` | begin, then `fireExpiration()` → `endCount == 1` |
+| `testBackgroundTaskBeginsAndEndsAroundBackgroundedFinish` | record → `.sceneWillResignActive` → `.sceneDidEnterBackground` → simulate finish: `callLog == ["begin", "end"]`, and `callLog` still `["begin"]` before the simulated finish |
+| `testBackgroundExpirationEndsTask` | record → `.sceneWillResignActive` (task begun) → `fireExpiration()`, drain → `endCount == 1`, `state.backgroundTaskActive == false` |
 | `testThermalRunsReduceFrameRateBeforeStop` | `.thermalPressureCritical` while recording → `reduceFrameRateCount == 1`, then stop recorded |
 | `testMediaServicesResetRecreatesSession` | idle + simulate `.mediaServicesReset` → `recreateCount == 1`, `captureAvailability == .ready` |
 | `testRecreateFailureMarksUnavailable` | `stubRecreateError = .deviceUnavailable` → `.unavailable` |
@@ -261,14 +279,15 @@ FakeBackgroundTaskRunner; `await store.waitForIdleEffects()` before assertions):
 | `testPrepareCaptureReportsNoAudio` | `stubHasAudioInput = false` → `hasAudioInput == false`, still `.ready` |
 | `testRecoverOrphansReportsWritingEntries` | pre-seed ledger with one `.writing` entry whose file exists (write bytes) and one whose file doesn't → two `RecoveredSegment`s with the right `fileExists` |
 
-`StoryCueTests/SessionMachineTests.swift` — **add** two rows, change nothing else:
+`StoryCueTests/SessionMachineTests.swift` — **add** six rows, change nothing else:
 `testSegmentCapFinishesSegment` (`.recording` + `.segmentCapReached` → `.finishing(id,
 .segmentCapReached)`, `[.stopSegment]`) and `testSegmentCapNoOpWhenNotRecording` (`.idle`,
 `.paused`, `.finishing` unchanged, no effects); `testEarlyFileOutputFinishedWhileRecordingPausesAndPersists`
 (`.recording(id)` + `fileOutputFinished(id, .saved)` → `.paused(.outputEndedUnexpectedly)`,
 `[.persistLedger]`, segment outcome recorded); `testEarlyFinishThenLateInterruptionIsNoOp`
 (that state + `audioInterruptionBegan`, then + `runtimeError` → unchanged, no effects);
-`testEarlyFinishEndsActiveBackgroundTask` (same with `backgroundTaskActive` → `[.persistLedger, .endBackgroundTask]`).
+`testEarlyFinishEndsActiveBackgroundTask` (same with `backgroundTaskActive` → `[.persistLedger, .endBackgroundTask]`);
+`testBackgroundTaskExpiredClearsFlag` (`backgroundTaskActive` true + `.backgroundTaskExpired` → false, phase unchanged, no effects; and a no-op when already false).
 The normal ordering (interruption first, callback second) is already covered by the existing
 rows.
 
@@ -282,7 +301,7 @@ rows.
 - No SwiftUI views, no change to `StoryCueApp.swift`, no preview layer (S2a).
 - No Duo code; `AVCaptureService` still wires no direction coordinator.
 - No change to any existing `SessionMachineTests` expectation — the reducer's 45 existing
-  tests must pass untouched. Reducer edits are additive only (one event, two reasons, the
+  tests must pass untouched. Reducer edits are additive only (two events, two reasons, the
   segment-cap case and the matching-id branch in the `fileOutputFinished` case).
 - No `@unchecked Sendable`, `nonisolated(unsafe)`, or `try!`.
 - `MockCaptureService` stays whole-file `#if DEBUG`; `FakeBackgroundTaskRunner` lives in the
@@ -291,6 +310,6 @@ rows.
 
 ## Done when
 
-CI green on both lanes plus the Release compile step; `SessionStoreTests` (18), the 5 new reducer tests, `SegmentFilesTests`
+CI green on both lanes plus the Release compile step; `SessionStoreTests` (18), the 6 new reducer tests, `SegmentFilesTests`
 (3) and the 1 new mock test all run and pass; `grep -rn "cachesDirectory" StoryCue/` returns
 nothing; Sol's diff audit adjudicated.
