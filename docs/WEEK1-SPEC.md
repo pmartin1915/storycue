@@ -165,18 +165,22 @@ is no previous-question event or backward navigation in week 1, regardless of `m
   everything else.)
 - **`.finishing` has exactly two exits.** (1) `fileOutputFinished(segmentID: id, outcome:)`
   where `id` matches the currently-finishing segment's ID — the normal exit, records
-  `outcome`/`endReason` on the segment and moves to `.paused(reason)`. (2) `runtimeError` —
-  the escape hatch: if the real callback never arrives (lost delegate call, wedged
-  session), treat it exactly like `fileOutputFinished(segmentID: id, outcome:
-  .failed(kept: true))` — segment recorded with the *original* finishing `reason`
-  (unchanged) and `outcome = .failed(kept: true)`, transition to `.paused(reason)`.
+  `outcome`/`endReason` on the segment. (2) `runtimeError` — the escape hatch: if the real
+  callback never arrives (lost delegate call, wedged session), treat it exactly like
+  `fileOutputFinished(segmentID: id, outcome: .failed(kept: true))` — segment recorded with
+  the *original* finishing `reason` (unchanged) and `outcome = .failed(kept: true)`.
   `SessionStore` (step 4, out of scope) owns the wall-clock timeout policy that decides
   when to synthesize `runtimeError` into a wedged `.finishing`; the reducer only defines
-  what happens when it arrives. Every other event while `.finishing` is ignored (default
-  rule) — including a `fileOutputFinished` whose `segmentID` does **not** match (a
-  stale/duplicate callback from an already-superseded segment) and including
-  `tapNextQuestion`/`tapSkip` (an advance tap during finishing is silently swallowed;
-  there is no deferred-retry queue in week 1).
+  what happens when it arrives.
+  **Destination for both exits depends on `reason`:** if `reason == .userStop` (the
+  `tapNextQuestion`/`tapSkip` finish-then-advance sequence), the destination is `.idle`
+  with `questionIndex` advanced (clamped at the last question) — **not** `.paused`;
+  `.paused(.userStop)` is never a reachable state. For every other `reason`, the
+  destination is `.paused(reason)` (the acceptance table rows above). Every other event
+  while `.finishing` is ignored (default rule) — including a `fileOutputFinished` whose
+  `segmentID` does **not** match (a stale/duplicate callback from an already-superseded
+  segment) and including `tapNextQuestion`/`tapSkip` (an advance tap during finishing is
+  silently swallowed; there is no deferred-retry queue in week 1).
 - **`fileOutputFinished` outside `.finishing`, or with a non-matching ID, is always
   ignored** (default rule) — covers races like: recording finishes on question A,
   `tapNextQuestion` starts question B's segment before A's `fileOutputFinished` callback
@@ -188,10 +192,13 @@ is no previous-question event or backward navigation in week 1, regardless of `m
   Resuming is always via the user's own `tapResume` (per the `.paused` doc comment above:
   the tap is the confirmation, for every reason) — an interruption clearing on its own
   never auto-resumes recording.
-- `hingeChanged` only matters as a transition **into** `.closed`. From `.recording`,
-  `hingeChanged(.closed)` finishes the segment (existing acceptance row). From any phase,
-  `hingeChanged(.partiallyOpen)`, `hingeChanged(.fullyOpen)`, or `hingeChanged(nil)`
-  (hinge/accessory removed) update `SessionState.hinge` only — no phase change, no effect.
+- **`hingeChanged(newValue)` updates `SessionState.hinge = newValue` in every phase,
+  including `.finishing`** — this is a plain status update, not a discontinuity event
+  itself, so it is not subject to the `.finishing`-ignores-everything-but-two-exits rule
+  above. On top of that unconditional update: from `.recording` only, `hingeChanged(.closed)`
+  *additionally* finishes the segment (existing acceptance row). `hingeChanged(.partiallyOpen)`,
+  `hingeChanged(.fullyOpen)`, or `hingeChanged(nil)` (hinge/accessory removed) never finish
+  a segment regardless of phase — they only ever update `state.hinge`.
 - **Background-task pairing is tracked by `SessionState.backgroundTaskActive`, not by
   phase alone** (phase alone can't distinguish "task begun, then user tapped pause before
   backgrounding" from "no task was ever begun"):
@@ -390,7 +397,8 @@ is a platform-agnostic event even though only a Duo build ever sends it):
 | `.finishing(.userPause)` | `fileOutputFinished(.saved)` | `.paused(.userPause)` | `.persistLedger` | `testUserPauseFinishSavesAndPauses` |
 | `.paused` (any reason) | `tapResume` | `.recording(new)`, new segment appended to same clip | `.startSegment` | `testResumeStartsFreshSegmentOnSameClip` |
 | `.recording` | `hingeChanged(.closed)` | `.finishing(id, .hingeClosed)` | `.stopSegment` | `testHingeCloseFinishesSegment` |
-| `.recording` | `hingeChanged(.partiallyOpen)` (or `.fullyOpen`/`nil`) | unchanged phase | none — `state.hinge` updated only | `testHingeChangeOtherThanClosedDoesNotFinishSegment` |
+| any phase | `hingeChanged(.partiallyOpen)` (or `.fullyOpen`/`nil`) | unchanged phase | none — `state.hinge` updated only | `testHingeChangeOtherThanClosedDoesNotFinishSegment` |
+| `.finishing` | `hingeChanged(_)` (any value, including `.closed`) | unchanged phase (still `.finishing`) | none — `state.hinge` updated only | `testHingeChangeDuringFinishingUpdatesStateWithoutAffectingPhase` |
 | `.recording` | `accessoryAvailabilityChanged(false)` | `.finishing(id, .accessoryWithdrawn)` | `.stopSegment` | `testAccessoryWithdrawnFinishesSegment` |
 | `.recording` | `audioInterruptionBegan` | `.finishing(id, .audioInterruption)` | `.stopSegment` | `testAudioInterruptionFinishesSegment` |
 | `.recording` | `captureInterruptionBegan(.videoDeviceInUseByAnotherClient)` | `.finishing(id, .captureInterruption(...))` | `.stopSegment` | `testCaptureInterruptionFinishesSegment` |
@@ -401,7 +409,8 @@ is a platform-agnostic event even though only a Duo build ever sends it):
 | `backgroundTaskActive` (any phase, task begun but never entered background) | `sceneDidBecomeActive` | unchanged phase; `backgroundTaskActive = false` | `.endBackgroundTask` | `testBecomeActiveEndsUnclosedBackgroundTask` |
 | `.recording` | `thermalPressureCritical` | `.finishing(id, .thermalShutdown)` | `[.reduceFrameRate, .stopSegment]` (both, in that order, on the one event — see note below) | `testThermalCriticalFinishesSegment` |
 | `.recording` | `runtimeError` | `.finishing(id, .runtimeError)` | `.stopSegment` | `testRuntimeErrorFinishesSegment` |
-| `.finishing(id, reason)` (any reason) | `runtimeError` | `.paused(reason)`, segment recorded with **original** `reason` and `outcome = .failed(kept: true)` | `.persistLedger` | `testRuntimeErrorEscapesWedgedFinishing` |
+| `.finishing(id, reason)`, `reason` ≠ `.userStop` | `runtimeError` | `.paused(reason)`, segment recorded with **original** `reason` and `outcome = .failed(kept: true)` | `.persistLedger` | `testRuntimeErrorEscapesWedgedFinishing` |
+| `.finishing(id, .userStop)` | `runtimeError` | `.idle`, `questionIndex` advanced (clamped); segment recorded with `.userStop`/`.failed(kept: true)` | `.persistLedger` | `testRuntimeErrorEscapesWedgedFinishingDuringAdvance` |
 | `.recording` | `mediaServicesReset` | `.finishing(id, .mediaServicesReset)` | `.stopSegment`, `.recreateCaptureSession` | `testMediaServicesResetFinishesAndRecreates` |
 | `.idle` / `.paused` | `mediaServicesReset` | unchanged phase | `.recreateCaptureSession` | `testMediaServicesResetRecreatesSessionEvenWhenIdle` |
 | `.recording(new)` (after an older segment was superseded) | `fileOutputFinished(segmentID: staleID, ...)` where `staleID` ≠ current segment | unchanged | none | `testStaleFileOutputFinishedIgnored` |
