@@ -1,6 +1,10 @@
-# Handoff 2026-09-22 (implement + review pass) — week 1 code exists, review done, NOT pushed
+# Handoff 2026-09-22 (implement + review pass) — week 1 CI is GREEN, PR #1 open, needs Perry's review/merge
 
-For whichever session picks this up next. Read `ai/STATE.md` first, then this.
+For whichever session picks this up next. Read `ai/STATE.md` first, then this. **Start
+that next session directly in `storycue`** (`C:\Users\perry\DevProjects\storycue`), not
+`dev-ops` or `Recall` — this session ran from `Recall` (an empty placeholder folder) and
+had to reconstruct all context by hand; every doc/log/worktree this handoff points to
+lives inside `storycue` itself.
 
 ## What this session did
 
@@ -74,36 +78,79 @@ already handles them correctly).
 Fix commit: `0dd159e` on `week1-impl` (2 files, +16/−10). Re-ran both mechanical checks
 after editing — still 35/35 exact match, all invariants hold.
 
+## What happened after that (same day, autonomous-loop ticks)
+
+Asked Perry how to get a compile signal (pushing a new branch to the private repo is an
+ask-first action under standing instructions) — he chose **push + open a PR against
+main**. Pushed `week1-impl`, opened **PR #1**
+(https://github.com/pmartin1915/storycue/pull/1). First compile of ~1,500 lines of
+Swift 6 strict-concurrency code written blind on a non-Mac host predictably needed
+iteration — **three real, distinct bugs, no flakes, four CI rounds total:**
+
+1. `51fbeb7` — three `Notification`-is-not-`Sendable` errors in `AVCaptureService`'s
+   `NotificationCenter` consumers (`SendingRisksDataRace`). Fixed by extracting the one
+   Sendable value each handler needs (a raw `UInt`/`Int`/`AVError`) synchronously inside
+   the `for await` loop, before the `await` hop into the actor, instead of passing the
+   whole `Notification` across.
+2. `9622535` — two `SessionMachineTests` "finish-then-advance" tests
+   (`testNextQuestionWhileRecordingFinishesFirst`,
+   `testNextQuestionAtLastQuestionFinishesThenClamps`) passed the
+   `(SessionState, [SessionEffect])` tuple from a first `reduce()` call straight into a
+   second `reduce()` call's `SessionState` parameter instead of unpacking `.0` — the
+   pattern used correctly everywhere else in the file (e.g. line 132). Checked the whole
+   file for the same anti-pattern; these were the only two instances.
+3. `1042f22` (`week1-impl`) / `e735199` (`main`) — **not a week-1 bug, a pre-existing
+   scaffold gap**: `project.yml` never set `SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG`
+   for the Debug config. Same class of gap as the `ENABLE_TESTABILITY` fix in `30696c0`
+   (this morning's earlier session) — a hand-authored XcodeGen project doesn't inherit
+   Xcode's project-template defaults for free. `#if DEBUG` never activated anywhere in the
+   project, so `MockCaptureService.swift` (entirely `#if DEBUG`-gated) failed to compile —
+   the first week any file used that gate, so the gap had never surfaced before. Fixed on
+   **both** branches since it's repo-wide, not implementation-specific; `main`'s own CI
+   confirmed green on `e735199` too.
+
+**Final green run: `35694965403`.** `Build & test (baseline, flag off)`: 49/49 tests
+passed, including all 35 `SessionMachineTests` acceptance rows. `Build & test (Duo, flag
+on)`: skipped, correctly (this runner has no iOS 27.1 SDK — expected per `STATE.md`).
+
+Each CI-fix commit went through the same discipline as everything else this session: read
+the actual failing log (not just the conclusion), confirm the root cause in the real
+source before touching anything, re-run the spec-compliance mechanical checks after
+editing test files, check for remote divergence before every push.
+
+**Did NOT merge PR #1.** The push/PR go-ahead covered getting a compile signal, not
+merging to `main` — that's Perry's call. Sent a desktop push notification when CI went
+green.
+
 ## What's next
 
-**Push `week1-impl` and get a real compile/test signal — did NOT do this, needs Perry's
-go-ahead.** The branch is local-only (no remote tracking ref). `build.yml` triggers on
-`push`/`pull_request` against `main` and `workflow_dispatch` only — nothing triggers on
-pushing a feature branch by itself, so getting a compile signal means either opening a PR
-against `main` or a manual `workflow_dispatch` run against the pushed branch. Either way is
-the first push of this branch to the (private) GitHub repo, which is an ask-first action
-under standing instructions. **1,500 lines of Swift 6 strict-concurrency code written
-blind on a non-Mac host have never been compiled — expect iteration rounds on the
-`xcode-27` runner before green.** Do not merge to `main` before that.
-
-Once it's green: Kimi's transition-gap coverage pass (`ai/IDEAS.md`, optional hardening)
-and Sol's other two deferred `AVCaptureService` items become relevant again once
-`SessionStore` (step 4) starts.
+- **PR #1 needs Perry's review + merge.** Nothing mechanical is left: spec-compliant
+  (35/35 acceptance rows, zero invented names), boss-reviewed (Sol + Kimi + own read, one
+  real concurrency bug found and fixed), CI green on both the feature branch and `main`.
+- Once merged: Kimi's transition-gap coverage pass (`ai/IDEAS.md`, optional hardening,
+  not blocking) and Sol's other two deferred `AVCaptureService` items become relevant
+  again once `SessionStore` (step 4) starts.
+- App icon (`ai/STATE.md` — blocked on a Perry decision, unrelated to this PR).
 
 ## Do not (unchanged from prior handoffs, still true)
 
 - Don't implement Duo-path code this week — week 2, under the SDK gate.
 - Don't widen `deploy.yml`'s secret set or run it — App ID/profile/ASC record don't exist yet.
 - Don't reopen the name, no-hardware, or v1-display-only decisions.
-- Don't merge `week1-impl` to `main` before CI is green on it.
+- Don't merge PR #1 without Perry actually looking at the diff first — CI green isn't the
+  same thing as reviewed.
 - No AI attribution trailers on any commit.
 
 ## Verification for the next session to trust this handoff
 
-- `git worktree list` shows `.orchestrate/wt/week1` on `week1-impl` at `0dd159e`.
-- `git branch -vv | grep week1-impl` shows no `[origin/week1-impl]` tracking ref (confirms
-  not yet pushed).
-- `ai/IDEAS.md` has six new 2026-09-22 entries (Sol findings 2/6/9, Kimi's 13-item gap
-  list, the advisor's delegate-ordering note, and the already-present persistLedger one).
+- `gh pr view 1` shows state OPEN, branch `week1-impl` -> `main`.
+- `gh run view 35694965403 --json conclusion` reports `success`; job step
+  `Build & test (Duo, flag on)` shows `skipped`, not `failure`.
+- `git log --oneline -6 origin/week1-impl` should show, top to bottom: `1042f22`,
+  `9622535`, `51fbeb7`, `0dd159e`, `e6ec9e0`, `11cf380`.
+- `git log --oneline -3 origin/main` should show `6b5afef`, `e735199`, `4a22aee` on top
+  of `11cf380`.
+- `ai/IDEAS.md` has six 2026-09-22 entries (Sol findings 2/6/9, Kimi's 13-item gap list,
+  the advisor's delegate-ordering note, and the already-present persistLedger one).
 - `.orchestrate/logs/20260922T055148Z-sol-implement.final.txt` and the tail of
   `20260922T055152Z-implement.log` hold the two reviews' full text.
