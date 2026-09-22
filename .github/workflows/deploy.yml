@@ -26,7 +26,7 @@ concurrency:
 jobs:
   deploy:
     name: Archive, verify, upload
-    runs-on: macos-27
+    runs-on: xcode-27
 
     env:
       BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
