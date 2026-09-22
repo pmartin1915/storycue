@@ -1,8 +1,10 @@
-# Handoff 2026-09-22 (icon glyph: reconstructed, built, committed)
+# Handoff 2026-09-22 (icon glyph: reconstructed, built, committed, wired, closed)
 
 Continues from `docs/HANDOFF-2026-09-22-coverage-and-icon.md` (coverage pass +
 Duo SDK finding + icon prompts, `c7c26cf`). That handoff explicitly flagged the
-icon prompts were never saved to a file. This session closed that loop.
+icon prompts were never saved to a file. This session closed that loop end to
+end: reconstruct prompts -> Perry picks -> build glyph -> gate -> wire into the
+actual Xcode project -> CI confirms green. Nothing icon-related left open.
 
 ## What this session did
 
@@ -38,22 +40,36 @@ distinct maskable/plain PWA variants, all 18 iOS slots present and named. Rust
 ink in both themes" rule). Committed in `brand` as `e8a29f6` ("brand: StoryCue
 joins the outdoor/life line"), pushed clean (no divergence, fast-forward).
 
-## What's next
+## What this session finished (second pass, same day)
 
-- **The generated icon set is not wired into the StoryCue Xcode project yet.**
-  `StoryCue/Assets.xcassets/AppIcon.appiconset/Contents.json` is still the
-  Xcode-default single-universal-slot placeholder with no image files. The real
-  output lives in `brand/dist/icons/apps/storycue/ios/AppIcon.appiconset/`
-  (18 slots + `Contents.json`, regenerate anytime with
-  `node scripts/gen-icons.mjs --app storycue` from `brand/`). Copying that
-  appiconset into the app and wiring `project.yml`'s asset catalog reference is
-  the remaining step -- small, mechanical, not done this session because it
-  wasn't asked for.
-- `brand`'s `npm run check` (contrast + drift gate) was not run this session --
-  glyph-only change, contrast doesn't apply to a new per-app SVG, but not
-  independently confirmed. Worth a quick run before the next `brand` rollout.
+Perry asked to "fix it all and close out." Closed:
+
+- **Wired the generated icon set into the actual Xcode project.** Copied all 18
+  PNGs + `Contents.json` from `brand/dist/icons/apps/storycue/ios/AppIcon.appiconset/`
+  into `StoryCue/Assets.xcassets/AppIcon.appiconset/`, replacing the Xcode-default
+  empty placeholder. `project.yml` already had
+  `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon` / `CFBundleIconName: AppIcon` set
+  from the original scaffold, so no project-file change was needed -- just the
+  asset files. Committed `9ac69db`, pushed.
+- **Ran `brand`'s `npm run check`** (contrast + drift + icon gate) -- clean, no
+  regressions, house mark and all consumers still pass.
+- **Verified against CI, not just the local gate.** Pushed and watched the run
+  rather than assuming a passing local check meant a passing build: run
+  `35769450879`, conclusion `success`. The icon swap does not break the app.
+
+## What's genuinely still open (not this session's to fix)
+
 - 2026-10-10 pivot check (plan section 5) still needs Perry's re-read against
-  the Duo-SDK-availability fact from the prior session -- untouched by this one.
+  the Duo-SDK-availability fact from the prior session -- untouched by this one,
+  Perry's call, not mechanical.
+- **Next session is an Opus instance whose job is to organize and strategize on
+  finishing both StoryCue and Retold** (`../retold`, a sibling app forked from
+  StoryCue's own week-0 scaffold with the Duo-specific pieces removed -- see
+  `retold/ai/STATE.md` and `retold/docs/HANDOFF-2026-09-21-kickoff.md`; name
+  history there: "Hippo" USPTO-congested, "Recall" rejected for trademark
+  collision, landed on "Retold" 2026-09-21). That planning work was
+  deliberately not started here -- this session's scope was closing the icon
+  loop, not cross-project strategy.
 
 ## Do not (unchanged from prior handoffs, still true)
 
@@ -70,8 +86,12 @@ joins the outdoor/life line"), pushed clean (no divergence, fast-forward).
   `origin/main` (pushed, not just committed).
 - `brand/marks/apps/storycue.svg` exists: 44 viewBox, three `<path>` elements,
   `stroke="#E0935F"`, no `<rect>`/container, no `fill` other than `none`.
-- `ai/STATE.md`'s "What's Done" carries the icon entry; "What's Next" no longer
-  lists the icon as pending-on-Perry.
-- No file under `StoryCue/Assets.xcassets/AppIcon.appiconset/` besides
-  `Contents.json` yet -- confirms the Xcode-wiring step above is genuinely still
-  open, not silently done.
+- `git log --oneline -3` in `storycue` shows `9ac69db` (icon wiring) on top of
+  `60213ac` (icon-committed docs) on top of `c7c26cf`.
+- `StoryCue/Assets.xcassets/AppIcon.appiconset/` has 18 PNGs + `Contents.json`,
+  not just `Contents.json` -- confirms the wiring actually landed, not just this
+  doc's claim of it.
+- `gh run view 35769450879 --json conclusion` reports `success` -- the icon
+  wiring commit's own CI run, not a stale run from before it.
+- `ai/STATE.md`'s "What's Done" icon entry ends with "CI confirmed green on the
+  wiring commit"; "What's Next" no longer mentions the icon at all.
