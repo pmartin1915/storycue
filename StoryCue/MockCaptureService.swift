@@ -11,6 +11,9 @@ actor MockCaptureService: CaptureService {
 
     private(set) var startedSegments: [RecordedStart] = []
     private(set) var stoppedSegmentIDs: [UUID] = []
+    /// Starts and stops in the order they happened ("start:<uuid>" / "stop:<uuid>"): the two
+    /// arrays above can't show whether a stop ran before its start.
+    private(set) var callLog: [String] = []
     private(set) var configured = false
 
     // Test-controlled stubs. Set through the setters below: actor state can't be assigned
@@ -55,10 +58,12 @@ actor MockCaptureService: CaptureService {
             throw stubStartError
         }
         startedSegments.append(RecordedStart(id: id, questionID: questionID))
+        callLog.append("start:\(id)")
     }
 
     func stopSegment(_ segmentID: UUID) async {
         stoppedSegmentIDs.append(segmentID)
+        callLog.append("stop:\(segmentID)")
     }
 
     func authorization() -> CaptureAuthorization {

@@ -105,6 +105,10 @@ final class SessionStoreTests: XCTestCase {
         let stopped = await fixture.mock.stoppedSegmentIDs
         XCTAssertEqual(started.count, 1)
         XCTAssertEqual(stopped, [started[0].id])
+        // The ordering claim itself: the separate arrays above would pass even if the stop
+        // had run first.
+        let callLog = await fixture.mock.callLog
+        XCTAssertEqual(callLog, ["start:\(started[0].id)", "stop:\(started[0].id)"])
         guard case .finishing = store.state.phase else {
             return XCTFail("expected .finishing after tapPause, got \(store.state.phase)")
         }
