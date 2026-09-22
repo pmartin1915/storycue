@@ -6,6 +6,32 @@ _Written 2026-09-22. Scopes the optional, non-blocking coverage pass `ai/STATE.m
 **test-only**, adding missing test methods, not changing production logic. Named here so
 `/orchestrate` doesn't have to re-derive the gaps or invent test names/assertions._
 
+## If the reducer doesn't match a gap description
+
+The reducer excerpts quoted inline below are illustrative aids, not the source of truth —
+always read the actual current `StoryCue/SessionMachine.swift` for ground truth before
+writing a test's assertions. If you read it and `SessionMachine.swift`'s real behavior for
+a given (phase, event) pair genuinely differs from what its gap description below says
+(not a typo in your test, an actual behavioral mismatch you can point to a specific line
+for): **stop, do not edit `SessionMachine.swift`, and do not force the test to match
+whatever the code happens to do.** Report the discrepancy (line number, what the code
+does, what this doc claims) instead of silently resolving it either direction — that's a
+finding for the boss to adjudicate, not something to paper over. This is expected to be
+rare-to-never; the reducer was already reviewed against all 13 gaps before this doc was
+written.
+
+## Done checklist
+
+- Exactly 10 new test methods appended to `StoryCueTests/SessionMachineTests.swift`, named
+  as in the "The 10 test methods" section below.
+- No existing test method renamed, reordered, or edited.
+- No new or modified helper methods — reuse the existing ones exactly as described.
+- No file other than `StoryCueTests/SessionMachineTests.swift` in the diff.
+- The named assertions in each test below are the required minimum — an extra `XCTAssert`
+  that reinforces the same expectation (e.g. a precondition check) is fine; don't add
+  assertions that test something beyond what the gap describes, and don't add new test
+  methods beyond the 10 named.
+
 ## Scope
 
 **In scope:** new test methods appended to `StoryCueTests/SessionMachineTests.swift` only.
