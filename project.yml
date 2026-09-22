@@ -18,6 +18,9 @@ settings:
     # Only the two targets below expand it; passing SWIFT_ACTIVE_COMPILATION_CONDITIONS
     # directly would replace the inherited DEBUG and hit every target.
     STORYCUE_DUO_CONDITIONS: ""
+  configs:
+    Debug:
+      ENABLE_TESTABILITY: YES
 
 targets:
   StoryCue:
