@@ -59,10 +59,9 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
+        # The whole app is portrait in 1.0 (S2a portrait lock).
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: "StoryCue records video of the person you are interviewing. Recordings stay on this phone."
         NSMicrophoneUsageDescription: "StoryCue records the voice of the person you are interviewing. Recordings stay on this phone."
         NSPhotoLibraryAddUsageDescription: "StoryCue saves the clips you choose to export to your Photos library."

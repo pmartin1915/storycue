@@ -25,6 +25,14 @@ protocol CaptureService: Actor {
     func reduceFrameRate() async
     /// Tear down everything, then configureSession() again (media-services reset).
     func recreateSession() async throws
+    /// Sendable source the UI connects a preview view to. The service owns ONE
+    /// `AVCaptureSession` object for its whole life, so a connected preview survives
+    /// `recreateSession()` — only the session's contents are rebuilt.
+    nonisolated var previewSource: any PreviewSource { get }
+    /// Stop running, cancel the per-session notification tasks, finish the events stream.
+    /// Idempotent: calling twice, or before configureSession(), is a no-op beyond the
+    /// first finish.
+    func shutdown() async
 }
 
 /// Five different real APIs feed this one stream, and each gets its own case — audio-session

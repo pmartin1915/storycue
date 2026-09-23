@@ -32,6 +32,14 @@ actor MockCaptureService: CaptureService {
     private(set) var requestAuthorizationCount = 0
     private(set) var reduceFrameRateCount = 0
     private(set) var recreateCount = 0
+    private(set) var shutdownCount = 0
+
+    nonisolated let previewSource: any PreviewSource = NoPreviewSource()
+
+    /// Suspension injected into requestAuthorization() (seconds, 0 = no delay). Lets a
+    // test hold beginSession() inside `await store.prepareCapture()` — AppModel.isPreparing.
+    private(set) var stubAuthorizationDelay: Double = 0
+    func setStubAuthorizationDelay(_ seconds: Double) { stubAuthorizationDelay = seconds }
 
     // Unbounded buffering with the continuation created in init (not lazily on first
     // access), so simulate() calls made before a subscriber starts iterating are
@@ -70,8 +78,11 @@ actor MockCaptureService: CaptureService {
         stubAuthorization
     }
 
-    func requestAuthorization() -> CaptureAuthorization {
+    func requestAuthorization() async -> CaptureAuthorization {
         requestAuthorizationCount += 1
+        if stubAuthorizationDelay > 0 {
+            try? await Task.sleep(for: .seconds(stubAuthorizationDelay))
+        }
         // Mimic a user granting access: each .notDetermined becomes .authorized. A
         // determined state is never re-prompted (mirrors AVCaptureService).
         if stubAuthorization.camera == .notDetermined {
@@ -95,6 +106,11 @@ actor MockCaptureService: CaptureService {
             throw stubRecreateError
         }
         configured = true
+    }
+
+    func shutdown() async {
+        shutdownCount += 1
+        continuation.finish()
     }
 
     /// Test-only: pushes an event into this service's own events stream.

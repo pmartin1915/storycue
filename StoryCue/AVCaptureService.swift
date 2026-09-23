@@ -22,7 +22,12 @@ actor AVCaptureService: CaptureService {
     /// parameter — the call site decides the directory so the ledger agrees with the files.
     private let segmentDirectory: URL
 
-    private var captureSession: AVCaptureSession?
+    /// The ONE session object for this service's whole life (S2a): created in init —
+    /// constructing it does no device lookup, so the S1 nil-safety rule still holds —
+    /// configured in configureSession(), gutted (never replaced) in recreateSession(),
+    /// so a connected camera preview keeps working across a media-services reset.
+    private let session: AVCaptureSession
+    nonisolated let previewSource: any PreviewSource
     private var movieFileOutput: AVCaptureMovieFileOutput?
     private var recordingDelegate: MovieRecordingDelegate?
     private var pressureObservation: NSKeyValueObservation?
@@ -42,6 +47,9 @@ actor AVCaptureService: CaptureService {
 
     init(segmentDirectory: URL) {
         self.segmentDirectory = segmentDirectory
+        let session = AVCaptureSession()
+        self.session = session
+        self.previewSource = SessionPreviewSource(session: session)
 
         var continuation: AsyncStream<CaptureServiceEvent>.Continuation!
         let events = AsyncStream(CaptureServiceEvent.self, bufferingPolicy: .unbounded) { continuation = $0 }
@@ -113,15 +121,16 @@ actor AVCaptureService: CaptureService {
             throw CaptureServiceError.deviceUnavailable
         }
 
-        let session = AVCaptureSession()
-
+        session.beginConfiguration()
         do {
             let videoInput = try AVCaptureDeviceInput(device: videoDevice)
             guard session.canAddInput(videoInput) else { throw CaptureServiceError.deviceUnavailable }
             session.addInput(videoInput)
         } catch let error as CaptureServiceError {
+            session.commitConfiguration()
             throw error
         } catch {
+            session.commitConfiguration()
             throw CaptureServiceError.deviceUnavailable
         }
 
@@ -140,7 +149,10 @@ actor AVCaptureService: CaptureService {
         // last movie fragment, so recovery (SessionStore.recoverOrphans) doesn't rest on a
         // default it never set.
         output.movieFragmentInterval = CMTime(seconds: 10, preferredTimescale: 600)
-        guard session.canAddOutput(output) else { throw CaptureServiceError.deviceUnavailable }
+        guard session.canAddOutput(output) else {
+            session.commitConfiguration()
+            throw CaptureServiceError.deviceUnavailable
+        }
         session.addOutput(output)
 
         // AVCaptureSession.automaticallyConfiguresApplicationAudioSession defaults to true
@@ -148,13 +160,13 @@ actor AVCaptureService: CaptureService {
         // rather than setting AVAudioSession's category by hand beside it (a
         // half-configuration that fights the capture session over activation).
         session.automaticallyConfiguresApplicationAudioSession = true
+        session.commitConfiguration()
 
         let delegate = MovieRecordingDelegate { [weak self] url, error in
             guard let self else { return }
             Task { await self.handleRecordingFinished(url: url, error: error) }
         }
 
-        self.captureSession = session
         self.movieFileOutput = output
         self.recordingDelegate = delegate
         self.videoDevice = videoDevice
@@ -203,20 +215,38 @@ actor AVCaptureService: CaptureService {
     }
 
     func recreateSession() async throws {
-        // Tear everything down, then re-run configureSession() from scratch.
+        // Gut the ONE session object, then re-run configureSession() from scratch. The
+        // session object survives, so a connected preview keeps working.
         cancelCaptureNotificationTasks()
-        if let session = captureSession, session.isRunning {
+        if session.isRunning {
             session.stopRunning()
         }
         pressureObservation?.invalidate()
         pressureObservation = nil
-        captureSession = nil
+        session.beginConfiguration()
+        for input in session.inputs {
+            session.removeInput(input)
+        }
+        for output in session.outputs {
+            session.removeOutput(output)
+        }
+        session.commitConfiguration()
         movieFileOutput = nil
         recordingDelegate = nil
         videoDevice = nil
         hasAudio = false
         configured = false
         try await configureSession()
+    }
+
+    func shutdown() async {
+        cancelCaptureNotificationTasks()
+        if session.isRunning {
+            session.stopRunning()
+        }
+        // AsyncStream.finish() is idempotent — the second call is a no-op, which is what
+        // makes shutdown() safe to call twice.
+        continuation.finish()
     }
 
     // MARK: - Event sources
