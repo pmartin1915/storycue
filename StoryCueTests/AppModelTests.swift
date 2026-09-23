@@ -47,7 +47,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotNil(model.active)
         XCTAssertEqual(spy.captureCallCount, 1)
         let mock = spy.captures[0]
-        XCTAssertEqual(await mock.requestAuthorizationCount, 1)
+        let requestCount = await mock.requestAuthorizationCount
+        XCTAssertEqual(requestCount, 1)
         XCTAssertEqual(model.active?.store.captureAvailability, .ready)
     }
 
@@ -76,7 +77,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(ended)
         XCTAssertNotNil(model.active)
         let mock = model.active!.capture as? MockCaptureService
-        XCTAssertEqual(await mock?.shutdownCount, 0)
+        let shutdownCount = await mock?.shutdownCount
+        XCTAssertEqual(shutdownCount, 0)
     }
 
     func testEndSessionShutsDownCapture() async {
@@ -88,7 +90,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(ended)
         XCTAssertNil(model.active)
         let mock = active.capture as? MockCaptureService
-        XCTAssertEqual(await mock?.shutdownCount, 1)
+        let shutdownCount = await mock?.shutdownCount
+        XCTAssertEqual(shutdownCount, 1)
     }
 
     func testNewSessionGetsFreshCapture() async {
