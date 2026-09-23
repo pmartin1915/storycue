@@ -396,6 +396,38 @@ final class SessionStoreTests: XCTestCase {
 
     // MARK: - Orphan recovery
 
+    func testRecoverOrphansUsesSegmentIDNotStoredPath() async throws {
+        let fixture = await makeStore()
+        let store = fixture.store
+
+        // The real file lives at the SegmentFiles-derived location...
+        let segmentID = UUID()
+        try FileManager.default.createDirectory(at: fixture.directory, withIntermediateDirectories: true)
+        let realURL = SegmentFiles.url(for: segmentID, in: fixture.directory)
+        try Data([0x00, 0x01, 0x02]).write(to: realURL)
+        // ...while the ledger entry's stored fileURL points into a container that no
+        // longer exists (an absolute path recorded before an app update).
+        let staleURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("old-container-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("\(segmentID.uuidString).mov")
+        try await fixture.ledger.record(SegmentLedgerEntry(
+            segmentID: segmentID,
+            questionID: "grandparents.001",
+            fileURL: staleURL,
+            startedAt: Date(),
+            status: .writing
+        ))
+
+        await store.recoverOrphans()
+
+        XCTAssertEqual(store.recoveredSegments.count, 1)
+        XCTAssertEqual(store.recoveredSegments[0].entry.segmentID, segmentID)
+        XCTAssertTrue(
+            store.recoveredSegments[0].fileExists,
+            "file existence must be checked at the SegmentFiles-derived path, not the stored one"
+        )
+    }
+
     func testRecoverOrphansReportsWritingEntries() async throws {
         let fixture = await makeStore()
         let store = fixture.store

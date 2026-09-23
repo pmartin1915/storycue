@@ -174,7 +174,11 @@ final class SessionStore {
     func recoverOrphans() async {
         guard let entries = try? await ledger.orphanedEntries() else { return }
         recoveredSegments = entries.map { entry in
-            let attributes = try? FileManager.default.attributesOfItem(atPath: entry.fileURL.path)
+            // Decision 2 (S3 spec §7): re-derive the path from the segment ID. A path
+            // stored before an app update can point into a container that no longer
+            // exists, even though the file is still there.
+            let url = SegmentFiles.url(for: entry.segmentID, in: segmentDirectory)
+            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
             let size = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
             return RecoveredSegment(entry: entry, fileExists: size > 0)
         }
