@@ -264,7 +264,7 @@ final class ExportPlannerTests: XCTestCase {
             sessionDate: sessionDate,
             calendar: utcCalendar
         )
-        XCTAssertEqual(name, "StoryCue - A-B-C-D-E-F-G-H-I-J- - Q01.mov")
+        XCTAssertEqual(name, "StoryCue - A-B-C-D-E-F-G-H-I-J- - 2026-10-02 - Q01.mov")
         for banned in ["/", "\\", ":", "*", "?", "\"", "<", ">", "|"] {
             XCTAssertFalse(name.contains(banned), "name must not contain \(banned)")
         }
