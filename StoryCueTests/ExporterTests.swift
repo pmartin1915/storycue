@@ -58,6 +58,19 @@ final class ExporterTests: XCTestCase {
         return Segment(id: id, questionID: questionID, startedAt: Date(), endReason: nil, outcome: .saved(url: url))
     }
 
+    /// Every file in the segment directory as "name size modificationTime", sorted, so an
+    /// in-place rewrite or truncation shows up, not just an added or removed name.
+    private func segmentSnapshot(_ fixture: Fixture) throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: fixture.segmentDirectory.path).map { name in
+            let attributes = try FileManager.default.attributesOfItem(
+                atPath: fixture.segmentDirectory.appendingPathComponent(name).path
+            )
+            let size = (attributes[.size] as? NSNumber)?.int64Value ?? -1
+            let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? -1
+            return "\(name) \(size) \(modified)"
+        }.sorted()
+    }
+
     /// The per-export directories currently under <temporaryRoot>/Exports/.
     private func exportDirectories(_ fixture: Fixture) -> [URL] {
         let exports = fixture.temporaryRoot.appendingPathComponent("Exports", isDirectory: true)
@@ -101,8 +114,9 @@ final class ExporterTests: XCTestCase {
             ClipManifestEntry(questionID: q2, segments: [s2]),
         ]
 
+        let sessionDate = Date()
         let result = try await fixture.exporter.export(
-            entries: entries, deck: deck, sessionDate: Date(),
+            entries: entries, deck: deck, sessionDate: sessionDate,
             unit: .perClip, destination: .files
         )
 
@@ -114,8 +128,8 @@ final class ExporterTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
         }
         XCTAssertEqual(result.files.map { $0.deletingPathExtension().lastPathComponent }.sorted(), [
-            "StoryCue - Grandparents - \(Self.todayString()) - Q01",
-            "StoryCue - Grandparents - \(Self.todayString()) - Q02",
+            "StoryCue - Grandparents - \(Self.dayString(sessionDate)) - Q01",
+            "StoryCue - Grandparents - \(Self.dayString(sessionDate)) - Q02",
         ].sorted())
         // .files keeps the temp directory for S2b's share sheet; discard(_:) removes it.
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.directory.path))
@@ -125,15 +139,15 @@ final class ExporterTests: XCTestCase {
         XCTAssertEqual(calls.count, 2)
     }
 
-    /// Today's date in the exporter's calendar (Gregorian, current time zone).
-    private static func todayString() -> String {
+    /// `date` in the exporter's calendar (Gregorian, current time zone).
+    private static func dayString(_ date: Date) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone.current
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = calendar
         formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
+        return formatter.string(from: date)
     }
 
     func testPhotosDeniedThrowsBeforeAnyStitch() async throws {
@@ -475,14 +489,14 @@ final class ExporterTests: XCTestCase {
         let decoy = fixture.segmentDirectory.appendingPathComponent("decoy.txt")
         try Data([0x02]).write(to: decoy)
 
-        let before = try FileManager.default.contentsOfDirectory(atPath: fixture.segmentDirectory.path).sorted()
+        let before = try segmentSnapshot(fixture)
 
         // Success path (.files).
         let result = try await fixture.exporter.export(
             entries: entries, deck: deck, sessionDate: Date(),
             unit: .perClip, destination: .files
         )
-        let afterSuccess = try FileManager.default.contentsOfDirectory(atPath: fixture.segmentDirectory.path).sorted()
+        let afterSuccess = try segmentSnapshot(fixture)
         XCTAssertEqual(before, afterSuccess)
 
         // Failure path (photos denied — throws before step 4).
@@ -496,7 +510,7 @@ final class ExporterTests: XCTestCase {
         // Cleanup path.
         await fixture.exporter.discard(result)
 
-        let afterFailures = try FileManager.default.contentsOfDirectory(atPath: fixture.segmentDirectory.path).sorted()
+        let afterFailures = try segmentSnapshot(fixture)
         XCTAssertEqual(before, afterFailures, "no export path adds, removes or renames anything in the segment directory")
     }
 }

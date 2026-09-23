@@ -42,7 +42,12 @@ struct AVStitcher: Stitcher {
         var cursor = CMTime.zero
         var firstReadableTransform: CGAffineTransform?
 
+        // Remove any file already at `output` first, so `outputWritten == false` really
+        // means no file is there (never a stale one from an earlier export).
+        try? FileManager.default.removeItem(at: output)
+
         for url in sources {
+            try Task.checkCancellation()
             let asset = AVURLAsset(url: url)
             let duration: CMTime
             let videoTracks: [AVAssetTrack]
@@ -50,6 +55,8 @@ struct AVStitcher: Stitcher {
                 duration = try await asset.load(.duration)
                 videoTracks = try await asset.loadTracks(withMediaType: .video)
             } catch {
+                // A cancelled load is a cancellation, not an unreadable source.
+                if Task.isCancelled { throw CancellationError() }
                 unreadable.append(url)
                 continue
             }
@@ -93,9 +100,6 @@ struct AVStitcher: Stitcher {
         if audioTrack.segments.isEmpty {
             composition.removeTrack(audioTrack)
         }
-
-        // Remove any file already at `output` before exporting.
-        try? FileManager.default.removeItem(at: output)
 
         // Decision 4: passthrough when compatible with this composition, else re-encode.
         let passthroughCompatible = await AVAssetExportSession.compatibility(

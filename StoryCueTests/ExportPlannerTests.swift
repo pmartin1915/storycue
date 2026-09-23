@@ -79,6 +79,25 @@ final class ExportPlannerTests: XCTestCase {
         XCTAssertTrue(result.dropped.isEmpty)
     }
 
+    func testDuplicateFileNamesAreMadeUnique() {
+        // Neither question ID is in the deck, so both clips would be "Q00".
+        let s1 = makeSegment(questionID: "unknown.1"), s2 = makeSegment(questionID: "unknown.2")
+        let entries = [
+            ClipManifestEntry(questionID: "unknown.1", segments: [s1]),
+            ClipManifestEntry(questionID: "unknown.2", segments: [s2]),
+        ]
+        let sizes = [s1, s2].reduce(into: [URL: Int64]()) {
+            $0[SegmentFiles.url(for: $1.id, in: segmentDirectory)] = 10
+        }
+
+        let result = plan(entries: entries, sizes: sizes)
+
+        XCTAssertEqual(result.outputs.map(\.fileName), [
+            "StoryCue - Grandparents - 2026-10-02 - Q00.mov",
+            "StoryCue - Grandparents - 2026-10-02 - Q00 (2).mov",
+        ])
+    }
+
     func testWholeSessionOneOutputAllSourcesInOrder() {
         let q1 = deck.questions[0].id, q2 = deck.questions[1].id
         let s1 = makeSegment(questionID: q1), s2 = makeSegment(questionID: q1)

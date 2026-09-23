@@ -77,15 +77,26 @@ enum ExportPlanner {
         let outputs: [PlannedOutput]
         switch unit {
         case .perClip:
+            // Two clips can share a name (e.g. two question IDs not in the deck both give
+            // "Q00"); a later stitch would overwrite the earlier file, so suffix " (2)", ...
+            var usedNames: Set<String> = []
             outputs = surviving.compactMap { item in
                 guard !item.sources.isEmpty else { return nil }
+                let base = fileName(
+                    deck: deck,
+                    questionID: item.questionID,
+                    sessionDate: sessionDate,
+                    calendar: calendar
+                )
+                var name = base
+                var suffix = 2
+                while usedNames.contains(name) {
+                    name = String(base.dropLast(4)) + " (\(suffix)).mov"
+                    suffix += 1
+                }
+                usedNames.insert(name)
                 return PlannedOutput(
-                    fileName: fileName(
-                        deck: deck,
-                        questionID: item.questionID,
-                        sessionDate: sessionDate,
-                        calendar: calendar
-                    ),
+                    fileName: name,
                     questionIDs: [item.questionID],
                     sources: item.sources,
                     flaggedSegmentIDs: item.flagged

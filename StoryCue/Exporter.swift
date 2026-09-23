@@ -89,11 +89,13 @@ actor Exporter {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-            // segmentID → questionID for every planned segment, to map stitcher-reported
-            // unreadable URLs back to segments (S3 spec review, point 5).
+            // segmentID → questionID for every PLANNED source, to map stitcher-reported
+            // unreadable URLs back to segments (S3 spec review, point 5). A segment the
+            // planner already dropped is not a source, so it can't be counted twice.
+            let plannedIDs = Set(plan.outputs.flatMap(\.sources).compactMap { SegmentFiles.segmentID(from: $0) })
             var questionIDBySegment: [UUID: String] = [:]
             for entry in entries {
-                for segment in entry.segments {
+                for segment in entry.segments where plannedIDs.contains(segment.id) {
                     questionIDBySegment[segment.id] = entry.questionID
                 }
             }
