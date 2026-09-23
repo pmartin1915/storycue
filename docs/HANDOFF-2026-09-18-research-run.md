@@ -32,7 +32,7 @@ Invoke the `gemini-deep-research` skill and follow it exactly; it was verified e
   wait a day if only one run fits.
 - The briefs are self-contained; paste via clipboard and **verify the landed head AND tail**
   with `get_page_text` (this machine has pasted stale wrong content before, full length).
-- Account is `pmartin1913@gmail.com` at `https://gemini.google.com/u/1/app`; confirm the Pro
+- Account is the operator's personal Gemini account at `https://gemini.google.com/u/1/app`; confirm the Pro
   badge. A password prompt or any quota/upgrade banner is a STOP -- hand it to Perry.
 - Export lands in `C:\Users\perry\Downloads\<title>.md`. Move it to the path above, strip
   Google's `\[` `\]` escapes, and keep the report's own title line. Do not edit its content.
