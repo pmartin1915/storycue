@@ -392,8 +392,10 @@ final class ExporterTests: XCTestCase {
         let entries = [ClipManifestEntry(questionID: q1, segments: [s1])]
         await fixture.stitcher.setStallNextCall()
 
+        let exporter = fixture.exporter
+        let deck = self.deck
         let task = Task {
-            try await fixture.exporter.export(
+            try await exporter.export(
                 entries: entries, deck: deck, sessionDate: Date(),
                 unit: .perClip, destination: .files
             )
