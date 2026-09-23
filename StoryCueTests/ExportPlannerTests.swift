@@ -126,7 +126,7 @@ final class ExportPlannerTests: XCTestCase {
         let missing = makeSegment(questionID: q1)
         let present = makeSegment(questionID: q1)
         let entries = [ClipManifestEntry(questionID: q1, segments: [missing, present])]
-        let sizes = [SegmentFiles.url(for: present.id, in: segmentDirectory): 10]
+        let sizes: [URL: Int64] = [SegmentFiles.url(for: present.id, in: segmentDirectory): 10]
 
         let result = plan(entries: entries, sizes: sizes)
 
@@ -165,7 +165,7 @@ final class ExportPlannerTests: XCTestCase {
         let q1 = deck.questions[0].id
         let empty = makeSegment(questionID: q1)
         let entries = [ClipManifestEntry(questionID: q1, segments: [empty])]
-        let sizes = [SegmentFiles.url(for: empty.id, in: segmentDirectory): 0]
+        let sizes: [URL: Int64] = [SegmentFiles.url(for: empty.id, in: segmentDirectory): 0]
 
         let result = plan(entries: entries, sizes: sizes)
 
@@ -186,7 +186,7 @@ final class ExportPlannerTests: XCTestCase {
             ClipManifestEntry(questionID: q1, segments: [gone1, gone2]),
             ClipManifestEntry(questionID: q2, segments: [ok]),
         ]
-        let sizes = [SegmentFiles.url(for: ok.id, in: segmentDirectory): 10]
+        let sizes: [URL: Int64] = [SegmentFiles.url(for: ok.id, in: segmentDirectory): 10]
 
         let result = plan(entries: entries, sizes: sizes)
 

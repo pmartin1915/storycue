@@ -113,7 +113,7 @@ final class ExporterTests: XCTestCase {
         for file in result.files {
             XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
         }
-        XCTAssertEqual(result.files.map(\.deletingPathExtension.lastPathComponent).sorted(), [
+        XCTAssertEqual(result.files.map { $0.deletingPathExtension().lastPathComponent }.sorted(), [
             "StoryCue - Grandparents - \(Self.todayString()) - Q01",
             "StoryCue - Grandparents - \(Self.todayString()) - Q02",
         ].sorted())
@@ -454,11 +454,12 @@ final class ExporterTests: XCTestCase {
         try FileManager.default.createDirectory(at: exports, withIntermediateDirectories: true)
         for name in ["stale-1", "stale-2"] {
             try FileManager.default.createDirectory(
-                at: exports.appendingPathComponent(name, isDirectory: true)
+                at: exports.appendingPathComponent(name, isDirectory: true),
+                withIntermediateDirectories: true
             )
         }
 
-        fixture.exporter.purgeStaleExports()
+        await fixture.exporter.purgeStaleExports()
 
         XCTAssertTrue(exportDirectories(fixture).isEmpty)
     }
