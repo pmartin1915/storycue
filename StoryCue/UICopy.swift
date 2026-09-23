@@ -13,6 +13,8 @@ enum UICopy {
     static let consentTitle = "Before you start"
     static let consentBody = "Everyone on camera needs to agree to be recorded. When you start, have the person you're interviewing read this line aloud:"
     static let readAloudLine = "I understand this is being recorded, and I am ready to begin."
+    /// The read-aloud line as the consent card shows it, in curly quotes.
+    static var readAloudCallout: String { "\u{201C}\(readAloudLine)\u{201D}" }
     static let privacyNote = "Recordings stay on this phone. Nothing is uploaded."
     static let consentConfirm = "We're ready"
 

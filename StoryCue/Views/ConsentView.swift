@@ -18,7 +18,7 @@ struct ConsentView: View {
                     .font(.body)
 
                 // The read-aloud line, in a quoted callout.
-                Text("\u{201C}\(UICopy.readAloudLine)\u{201D}")
+                Text(UICopy.readAloudCallout)
                     .font(.callout)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -30,7 +30,11 @@ struct ConsentView: View {
 
                 Button(UICopy.consentConfirm) {
                     isBeginning = true
-                    Task { await model.beginSession(deck: deck) }
+                    Task {
+                        await model.beginSession(deck: deck)
+                        // Done/Finish pops back to this screen, so the button must re-enable.
+                        isBeginning = false
+                    }
                 }
                 .font(.title2)
                 .frame(maxWidth: .infinity, minHeight: 44)

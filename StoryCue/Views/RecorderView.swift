@@ -55,6 +55,7 @@ struct RecorderView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button(UICopy.done) {
+                    cancelCountdown()
                     Task { await model.endSession() }
                 }
                 .disabled(!presentation.canLeave)
@@ -90,10 +91,10 @@ struct RecorderView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        // Translucent black backing: white text stays ≥4.5:1 even over a pure-white feed
-        // (worst case ~5.7:1). Secondary lines use opaque-ish white, not .secondary, which
+        // Translucent black backing: white text stays ≥7:1 even over a pure-white feed
+        // (70% black over white ≈ 8.5:1; 60% was only ≈ 5.7:1). Secondary lines use opaque-ish white, not .secondary, which
         // is translucent gray and drops below 3:1 over a bright feed.
-        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Timer
@@ -111,7 +112,7 @@ struct RecorderView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(.black.opacity(0.6), in: Capsule())
+            .background(.black.opacity(0.7), in: Capsule())
         }
     }
 
@@ -137,7 +138,7 @@ struct RecorderView: View {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding()
-            .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Controls
@@ -190,6 +191,7 @@ struct RecorderView: View {
             case .next:
                 store.send(.tapNextQuestion)
             case .finish:
+                cancelCountdown()
                 Task { await model.endSession() }
             case .disabled:
                 break
@@ -215,6 +217,9 @@ struct RecorderView: View {
     /// 3-2-1 before record/resume. The store event is chosen from the phase re-READ at
     /// the end of the countdown, never the phase from when it started.
     private func startCountdown() {
+        // A second activation before the view re-renders must not orphan a running task
+        // that cancelCountdown() could no longer reach.
+        guard countdownTask == nil else { return }
         countdown = 3
         countdownTask = Task {
             do {
@@ -227,6 +232,7 @@ struct RecorderView: View {
                 return   // cancelled: send nothing
             }
             countdown = nil
+            countdownTask = nil
             switch store.state.phase {
             case .idle:
                 store.send(.tapRecord)
@@ -250,7 +256,7 @@ struct RecorderView: View {
             .font(.largeTitle.bold().monospacedDigit())
             .foregroundStyle(.white)
             .padding(32)
-            .background(.black.opacity(0.6), in: Circle())
+            .background(.black.opacity(0.7), in: Circle())
     }
 
     // MARK: - Blocking overlay
