@@ -36,6 +36,19 @@ final class MockCaptureServiceTests: XCTestCase {
         XCTAssertEqual(requestAuthorizationCount, 1)
     }
 
+    func testShutdownFinishesEvents() async {
+        let service = MockCaptureService()
+        await service.shutdown()
+        XCTAssertEqual(await service.shutdownCount, 1)
+
+        // The finished stream ends immediately: the loop body must never run.
+        var receivedAnyEvent = false
+        for await _ in service.events {
+            receivedAnyEvent = true
+        }
+        XCTAssertFalse(receivedAnyEvent)
+    }
+
     func testStartStopSegmentCallsRecorded() async throws {
         let service = MockCaptureService()
         let segmentID = UUID()
