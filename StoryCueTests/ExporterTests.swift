@@ -356,10 +356,10 @@ final class ExporterTests: XCTestCase {
         _ = try await fixture.exporter.export(
             entries: entries, deck: deck, sessionDate: Date(),
             unit: .perClip, destination: .files,
-            progress: { done, total in await recorder.record(done, total) }
+            progress: { done, total in recorder.record(done, total) }
         )
 
-        let calls = await recorder.calls
+        let calls = recorder.calls
         XCTAssertEqual(calls.count, 3)
         XCTAssertEqual(calls[0].done, 1)
         XCTAssertEqual(calls[0].total, 3)

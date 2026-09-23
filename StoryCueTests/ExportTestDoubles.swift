@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 @testable import StoryCue
 
 /// Test doubles for the export engine (S3 spec §6). Not in the app target.
@@ -119,12 +120,16 @@ actor MockPhotoLibrary: PhotoLibrarySaving {
     }
 }
 
-/// Collects progress callbacks. The Exporter's progress closure is @Sendable, so the
-/// recorder it captures must be Sendable — an actor is the simplest Sendable box.
-actor ProgressRecorder {
-    private(set) var calls: [(done: Int, total: Int)] = []
+/// Collects progress callbacks. The Exporter's progress closure is synchronous and
+/// @Sendable, so the recorder must be callable without `await`: a Mutex-backed box.
+final class ProgressRecorder: Sendable {
+    struct Call: Equatable, Sendable { let done: Int; let total: Int }
+
+    private let storage = Mutex<[Call]>([])
+
+    var calls: [Call] { storage.withLock { $0 } }
 
     func record(_ done: Int, _ total: Int) {
-        calls.append((done: done, total: total))
+        storage.withLock { $0.append(Call(done: done, total: total)) }
     }
 }
