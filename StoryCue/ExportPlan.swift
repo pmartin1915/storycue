@@ -145,7 +145,7 @@ enum ExportPlanner {
         let banned: Set<Character> = ["/", "\\", ":", "*", "?", "\"", "<", ">", "|"]
         return String(name.map { character in
             if banned.contains(character)
-                || character.unicodeScalars.contains(where: { $0.properties.isControl }) {
+                || character.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
                 return "-"
             }
             return character
