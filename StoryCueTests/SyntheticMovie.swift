@@ -59,12 +59,37 @@ enum SyntheticMovie {
         }
         writer.startSession(atSourceTime: .zero)
 
-        // Video: `seconds` worth of gray frames at 10 fps.
-        let fps: Double = 10
+        // Silent 16-bit mono PCM; the writer compresses it to AAC.
+        let sampleRate = 44100
+        var audioFormat: CMAudioFormatDescription?
+        if audioInput != nil {
+            var asbd = AudioStreamBasicDescription(
+                mSampleRate: Float64(sampleRate),
+                mFormatID: kAudioFormatLinearPCM,
+                mFormatFlags: kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked,
+                mBytesPerPacket: 2,
+                mFramesPerPacket: 1,
+                mBytesPerFrame: 2,
+                mChannelsPerFrame: 1,
+                mBitsPerChannel: 16,
+                mReserved: 0
+            )
+            guard CMAudioFormatDescriptionCreate(
+                allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: 0, layout: nil,
+                magicCookieSize: 0, magicCookie: nil, extensions: nil,
+                formatDescriptionOut: &audioFormat
+            ) == noErr else { throw SyntheticMovieError.appendFailed }
+        }
+
+        // Video frames and audio buffers are appended interleaved, one 0.1 s step at a time:
+        // AVAssetWriter stalls an input that runs too far ahead of the other.
+        let fps = 10
         let frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
-        let frameCount = max(1, Int((seconds * fps).rounded()))
-        var presentationTime = CMTime.zero
-        for _ in 0..<frameCount {
+        let frameCount = max(1, Int((seconds * Double(fps)).rounded()))
+        let audioFramesPerStep = sampleRate / fps
+        for step in 0..<frameCount {
+            let time = CMTimeMultiply(frameDuration, multiplier: Int32(step))
+
             while !videoInput.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 5_000_000)
             }
@@ -73,59 +98,30 @@ enum SyntheticMovie {
             guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer) == kCVReturnSuccess,
                   let pixelBuffer else { throw SyntheticMovieError.pixelBufferFailed }
             CVPixelBufferLockBaseAddress(pixelBuffer, [])
-            let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
             if let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) {
-                let pixels = UnsafeMutableRawBufferPointer(start: baseAddress, count: bytesPerRow * height)
-                for index in pixels.indices { pixels[index] = 0x40 }
+                memset(baseAddress, 0x40, CVPixelBufferGetBytesPerRow(pixelBuffer) * height)
             }
             CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
-            guard adaptor.append(pixelBuffer, withPresentationTime: presentationTime) else {
+            guard adaptor.append(pixelBuffer, withPresentationTime: time) else {
                 throw writer.error ?? SyntheticMovieError.appendFailed
             }
-            presentationTime = presentationTime + frameDuration
-        }
-        videoInput.markAsFinished()
 
-        // Audio: silent mono PCM buffers, compressed to AAC by the writer.
-        if let audioInput {
-            let sampleRate = 44100.0
-            let framesPerBuffer = 1024
-            let bytesPerFrame = 2              // 16-bit mono
-            let totalFrames = max(1, Int((seconds * sampleRate).rounded()))
-            let memory = UnsafeMutableRawPointer.allocate(
-                byteCount: framesPerBuffer * bytesPerFrame,
-                alignment: 1
-            )
-            memory.initializeMemory(
-                as: UInt8.self,
-                repeating: 0,
-                count: framesPerBuffer * bytesPerFrame
-            )
-            defer { memory.deallocate() }
-
-            var framesWritten = 0
-            var audioTime = CMTime.zero
-            while framesWritten < totalFrames {
+            if let audioInput, let audioFormat {
                 while !audioInput.isReadyForMoreMediaData {
                     try await Task.sleep(nanoseconds: 5_000_000)
                 }
-                let frameCount = min(framesPerBuffer, totalFrames - framesWritten)
-                var bufferList = AudioBufferList()
-                bufferList.mNumberBuffers = 1
-                bufferList.mBuffers.mNumberChannels = 1
-                bufferList.mBuffers.mDataByteSize = UInt32(frameCount * bytesPerFrame)
-                bufferList.mBuffers.mData = memory
-                guard audioInput.append(&bufferList, withPresentationTime: audioTime) else {
+                let sample = try silentAudio(
+                    frames: audioFramesPerStep,
+                    at: CMTime(value: CMTimeValue(step * audioFramesPerStep), timescale: CMTimeScale(sampleRate)),
+                    format: audioFormat
+                )
+                guard audioInput.append(sample) else {
                     throw writer.error ?? SyntheticMovieError.appendFailed
                 }
-                audioTime = audioTime + CMTime(
-                    value: CMTimeValue(frameCount),
-                    timescale: CMTimeScale(sampleRate)
-                )
-                framesWritten += frameCount
             }
-            audioInput.markAsFinished()
         }
+        videoInput.markAsFinished()
+        audioInput?.markAsFinished()
 
         try await withCheckedThrowingContinuation { continuation in
             writer.finishWriting {
@@ -139,5 +135,27 @@ enum SyntheticMovie {
         if writer.status != .completed {
             throw writer.error ?? SyntheticMovieError.finishFailed
         }
+    }
+
+    private static func silentAudio(
+        frames: Int, at time: CMTime, format: CMAudioFormatDescription
+    ) throws -> CMSampleBuffer {
+        let byteCount = frames * 2
+        var block: CMBlockBuffer?
+        guard CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: byteCount,
+            blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
+            dataLength: byteCount, flags: kCMBlockBufferAssureMemoryNowFlag, blockBufferOut: &block
+        ) == noErr, let block else { throw SyntheticMovieError.appendFailed }
+        guard CMBlockBufferFillDataBytes(
+            with: 0, blockBuffer: block, offsetIntoDestination: 0, dataLength: byteCount
+        ) == noErr else { throw SyntheticMovieError.appendFailed }
+        var sample: CMSampleBuffer?
+        guard CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+            allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format,
+            sampleCount: frames, presentationTimeStamp: time, packetDescriptions: nil,
+            sampleBufferOut: &sample
+        ) == noErr, let sample else { throw SyntheticMovieError.appendFailed }
+        return sample
     }
 }
