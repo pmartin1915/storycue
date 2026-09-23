@@ -1,18 +1,18 @@
 name: Build & Test
 
 on:
-  push:
-    branches: [main]
-    # Docs/state commits don't compile anything; each skipped run saves ~50 billed minutes.
-    paths-ignore: ['docs/**', 'ai/**', '**/*.md']
+  # PRs only. A push to main re-tested the exact tree its PR had just passed (squash merge),
+  # so it was a duplicate run. Code reaches main only through a green PR; docs/state commits
+  # go straight to main and compile nothing. workflow_dispatch covers a manual main check.
   pull_request:
     branches: [main]
+    paths-ignore: ['docs/**', 'ai/**', '**/*.md']
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# macOS minutes bill at 10x on a private repo; a stacked push cancels the run it superseded.
+# A stacked push cancels the run it superseded (macOS minutes bill at 10x if a repo is private).
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
@@ -93,6 +93,9 @@ jobs:
 
       # Duo lane runs only when the gate found 27.1 headers. Same project, same scheme,
       # flag on; the StoryCueDuoTests bundle gets the flag, StoryCueTests never does.
+      # It compiles everything with the flag on, but runs only StoryCueDuoTests: the
+      # StoryCueTests bundle never sees the flag, so re-running it here repeated the
+      # baseline lane test for test.
       - name: Build & test (Duo, flag on)
         if: env.DUO_SDK == '1'
         run: |
@@ -110,6 +113,7 @@ jobs:
             -scheme StoryCue \
             -destination 'platform=iOS Simulator,name=iPhone 17' \
             -configuration Debug \
+            -only-testing:StoryCueDuoTests \
             -resultBundlePath "$RUNNER_TEMP/duo.xcresult" \
             STORYCUE_DUO_CONDITIONS="DUO_SDK" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
