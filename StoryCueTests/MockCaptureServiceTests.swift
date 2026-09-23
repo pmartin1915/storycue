@@ -39,7 +39,8 @@ final class MockCaptureServiceTests: XCTestCase {
     func testShutdownFinishesEvents() async {
         let service = MockCaptureService()
         await service.shutdown()
-        XCTAssertEqual(await service.shutdownCount, 1)
+        let shutdownCount = await service.shutdownCount
+        XCTAssertEqual(shutdownCount, 1)
 
         // The finished stream ends immediately: the loop body must never run.
         var receivedAnyEvent = false
