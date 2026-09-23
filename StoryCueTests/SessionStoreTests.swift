@@ -116,7 +116,7 @@ final class SessionStoreTests: XCTestCase {
 
     // MARK: - Start failure
 
-    func testStartFailureFeedsRuntimeError() async {
+    func testStartFailurePausesWithoutStop() async throws {
         let fixture = await makeStore()
         let store = fixture.store
         store.start()
@@ -125,23 +125,16 @@ final class SessionStoreTests: XCTestCase {
         store.send(.tapRecord)
         await store.waitForIdleEffects()
 
-        // The failed start fed .runtimeError back into the reducer: a single runtimeError
-        // from .recording stops there, with exactly one stop recorded.
-        guard case let .finishing(id, .runtimeError) = store.state.phase else {
-            return XCTFail("expected .finishing(id, .runtimeError), got \(store.state.phase)")
-        }
-        let stoppedAfterFirst = await fixture.mock.stoppedSegmentIDs
-        XCTAssertEqual(stoppedAfterFirst, [id])
-
-        store.send(.runtimeError)
-        await store.waitForIdleEffects()
-
-        // The escape hatch closes the wedged .finishing: .paused with a kept-failed outcome.
-        XCTAssertEqual(store.state.phase, .paused(reason: .runtimeError))
-        let segment = store.state.clips.flatMap(\.segments).first(where: { $0.id == id })
-        XCTAssertEqual(segment?.outcome, .failed(kept: true))
-        let stoppedAfterSecond = await fixture.mock.stoppedSegmentIDs
-        XCTAssertEqual(stoppedAfterSecond, [id], "no second stop")
+        // Capture never started, so no finish callback can come: the store must not wait in
+        // .finishing for one. It pauses directly, requests no stop, and closes the ledger entry.
+        XCTAssertEqual(store.state.phase, .paused(reason: .outputEndedUnexpectedly))
+        let segments = store.state.clips.flatMap(\.segments)
+        XCTAssertEqual(segments.count, 1)
+        XCTAssertEqual(segments.first?.outcome, .failed(kept: false))
+        let stopped = await fixture.mock.stoppedSegmentIDs
+        XCTAssertTrue(stopped.isEmpty, "nothing was recording, so nothing to stop")
+        let orphans = try await fixture.ledger.orphanedEntries()
+        XCTAssertTrue(orphans.isEmpty, "the failed start must not leave a .writing entry")
     }
 
     func testStartFailureNotAuthorizedSetsAvailability() async {
@@ -238,6 +231,41 @@ final class SessionStoreTests: XCTestCase {
         let recreateCount = await fixture.mock.recreateCount
         XCTAssertEqual(recreateCount, 1)
         XCTAssertEqual(store.captureAvailability, .ready)
+    }
+
+    func testMediaServicesResetWhileRecordingDoesNotWedge() async throws {
+        let fixture = await makeStore()
+        let store = fixture.store
+        store.start()
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+        guard let recording = currentRecording(store) else { return XCTFail("expected .recording") }
+
+        // No finish callback is ever simulated: the rebuilt session lost it.
+        await fixture.mock.simulate(.mediaServicesReset)
+        await store.waitForIdleEffects()
+
+        XCTAssertEqual(store.state.phase, .paused(reason: .mediaServicesReset))
+        let segment = store.state.clips.flatMap(\.segments).first(where: { $0.id == recording.id })
+        XCTAssertEqual(segment?.outcome, .failed(kept: true))
+        let recreateCount = await fixture.mock.recreateCount
+        XCTAssertEqual(recreateCount, 1)
+        let orphans = try await fixture.ledger.orphanedEntries()
+        XCTAssertTrue(orphans.isEmpty)
+    }
+
+    func testRecreateRefreshesAudioInput() async {
+        let fixture = await makeStore()
+        let store = fixture.store
+        store.start()
+        await store.prepareCapture()
+        XCTAssertTrue(store.hasAudioInput)
+
+        await fixture.mock.setStubHasAudioInput(false)
+        await fixture.mock.simulate(.mediaServicesReset)
+        await store.waitForIdleEffects()
+
+        XCTAssertFalse(store.hasAudioInput)
     }
 
     func testRecreateFailureMarksUnavailable() async {

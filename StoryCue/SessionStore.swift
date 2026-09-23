@@ -105,8 +105,11 @@ final class SessionStore {
     /// 1 Hz wall-clock tick. S2a's view calls this; tests never do.
     func startTicker() {
         guard tickerTask == nil else { return }
-        tickerTask = Task {
+        tickerTask = Task { [weak self] in
             while !Task.isCancelled {
+                // Weak per iteration: the store owns this task, so a strong capture would keep
+                // both alive forever if nobody called stop().
+                guard let self else { return }
                 self.tick(now: Date())
                 do {
                     try await Task.sleep(for: .seconds(1))
@@ -226,11 +229,17 @@ final class SessionStore {
             try? await ledger.record(entry)
             do {
                 try await capture.startSegment(id: id, for: questionID)
-            } catch CaptureServiceError.notAuthorized {
-                captureAvailability = .notAuthorized
-                send(.runtimeError)
             } catch {
-                send(.runtimeError)
+                if (error as? CaptureServiceError) == .notAuthorized {
+                    captureAvailability = .notAuthorized
+                }
+                // Capture never started, so no finish callback will ever arrive. Report the
+                // segment as finished-and-failed directly: from .recording(id) the reducer's
+                // early-completion branch pauses without requesting a stop; from
+                // .finishing(id, _) (a pause tapped meanwhile) it finishes normally. Either
+                // way .persistLedger closes the .writing entry. Sending .runtimeError here
+                // instead would park the session in .finishing waiting for that callback.
+                send(.fileOutputFinished(segmentID: id, outcome: .failed(kept: false)))
             }
 
         case let .stopSegment(id):
@@ -257,10 +266,20 @@ final class SessionStore {
             do {
                 try await capture.recreateSession()
                 captureAvailability = .ready
+                // Recreation rebuilds the microphone input too; don't keep the old answer.
+                hasAudioInput = await capture.hasAudioInput
             } catch CaptureServiceError.notAuthorized {
                 captureAvailability = .notAuthorized
             } catch {
                 captureAvailability = .unavailable
+            }
+            // A reset while recording queued stop + recreate, but the old output's finish
+            // callback may never come once the session is rebuilt. If nothing has finished
+            // the segment by now, use the reducer's escape hatch: .runtimeError from
+            // .finishing keeps the file (.failed(kept: true)) and pauses with the original
+            // .mediaServicesReset reason. A callback that does arrive later is ignored as stale.
+            if case .finishing(_, .mediaServicesReset) = state.phase {
+                send(.runtimeError)
             }
 
         case let .persistLedger(clip):

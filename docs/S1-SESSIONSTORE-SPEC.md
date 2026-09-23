@@ -267,12 +267,14 @@ FakeBackgroundTaskRunner; `await store.waitForIdleEffects()` before assertions):
 | `testTapRecordRecordsLedgerWritingBeforeCaptureStart` | after `.tapRecord`: ledger has one `.writing` entry whose `fileURL == SegmentFiles.url(for: id, in: dir)`; mock recorded the start with the same id |
 | `testSegmentFinishedEventMarksLedgerFinished` | simulate `.segmentFinished(id, .saved)` → phase `.paused`/`.idle` per reason; `orphanedEntries()` empty |
 | `testEffectsExecuteInOrderAcrossSends` | `.tapRecord` then immediately `.tapPause`: mock's recorded calls are start-then-stop, never reversed |
-| `testStartFailureFeedsRuntimeError` | `stubStartError = .deviceUnavailable`, `.tapRecord`, drain → phase `.finishing(id, .runtimeError)` with one stop recorded (a single `runtimeError` from `.recording` stops there); then `send(.runtimeError)` again, drain → `.paused(.runtimeError)`, segment outcome `.failed(kept: true)` |
+| `testStartFailurePausesWithoutStop` | `stubStartError = .deviceUnavailable`, `.tapRecord`, drain → `.paused(.outputEndedUnexpectedly)`, segment outcome `.failed(kept: false)`, no stop recorded, no `.writing` orphan. _(Amended after Sol's diff audit: the original row sent `.runtimeError`, which parked the session in `.finishing` waiting for a callback that can't come; the store now reports the failed start as `fileOutputFinished(.failed(kept: false))`.)_ |
 | `testStartFailureNotAuthorizedSetsAvailability` | `stubStartError = .notAuthorized` → `captureAvailability == .notAuthorized` |
 | `testBackgroundTaskBeginsAndEndsAroundBackgroundedFinish` | record → `.sceneWillResignActive` → `.sceneDidEnterBackground` → simulate finish: `callLog == ["begin", "end"]`, and `callLog` still `["begin"]` before the simulated finish |
 | `testBackgroundExpirationEndsTask` | record → `.sceneWillResignActive` (task begun) → `fireExpiration()`, drain → `endCount == 1`, `state.backgroundTaskActive == false` |
 | `testThermalRunsReduceFrameRateBeforeStop` | `.thermalPressureCritical` while recording → `reduceFrameRateCount == 1`, then stop recorded |
 | `testMediaServicesResetRecreatesSession` | idle + simulate `.mediaServicesReset` → `recreateCount == 1`, `captureAvailability == .ready` |
+| `testMediaServicesResetWhileRecordingDoesNotWedge` | _(added after Sol's audit)_ reset while recording, no callback → `.paused(.mediaServicesReset)`, outcome `.failed(kept: true)`, no orphan |
+| `testRecreateRefreshesAudioInput` | _(added after Sol's audit)_ after a reset, `hasAudioInput` reflects the rebuilt session |
 | `testRecreateFailureMarksUnavailable` | `stubRecreateError = .deviceUnavailable` → `.unavailable` |
 | `testTickPastCapSendsSegmentCapOnce` | record; `tick(now: startedAt + 601)` twice → exactly one stop recorded; after simulated finish, phase `.paused(.segmentCapReached)` |
 | `testTickBelowCapDoesNothing` | `tick(now: startedAt + 599)` → no stop |
@@ -314,6 +316,6 @@ rows.
 
 ## Done when
 
-CI green on both lanes plus the Release compile step; `SessionStoreTests` (18), the 6 new reducer tests, `SegmentFilesTests`
+CI green on both lanes plus the Release compile step; `SessionStoreTests` (20), the 6 new reducer tests, `SegmentFilesTests`
 (3) and the 1 new mock test all run and pass; `grep -rn "cachesDirectory" StoryCue/` returns
 nothing; Sol's diff audit adjudicated.
