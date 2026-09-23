@@ -27,8 +27,13 @@ struct RecorderView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
-                questionPanel
-                Spacer(minLength: 0)
+                // The question scrolls; the controls below never do. At the largest
+                // accessibility text sizes on a 667 pt screen the panel alone can exceed the
+                // height, and a Spacer would let it push Record/Next off screen.
+                ScrollView {
+                    questionPanel
+                }
+                .scrollBounceBehavior(.basedOnSize)
                 timerRow
                 bannerRow
                 controlsRow
@@ -73,19 +78,21 @@ struct RecorderView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(UICopy.questionCounter(store.state.questionIndex, store.state.deck.questions.count))
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.85))
             Text(store.currentQuestion.text)
                 .font(.largeTitle.bold())
                 .foregroundStyle(.white)
             if let next = store.nextQuestionPreview {
                 Text(next.text)
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.85))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        // Translucent black backing: white text stays ≥7:1 against any preview content.
+        // Translucent black backing: white text stays ≥4.5:1 even over a pure-white feed
+        // (worst case ~5.7:1). Secondary lines use opaque-ish white, not .secondary, which
+        // is translucent gray and drops below 3:1 over a bright feed.
         .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
     }
 
