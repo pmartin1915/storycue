@@ -123,15 +123,7 @@ enum SyntheticMovie {
         videoInput.markAsFinished()
         audioInput?.markAsFinished()
 
-        try await withCheckedThrowingContinuation { continuation in
-            writer.finishWriting {
-                if let error = writer.error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume()
-                }
-            }
-        }
+        await writer.finishWriting()
         if writer.status != .completed {
             throw writer.error ?? SyntheticMovieError.finishFailed
         }
