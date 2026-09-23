@@ -2,26 +2,11 @@ import SwiftUI
 
 @main
 struct StoryCueApp: App {
+    @State private var model = AppModel.production()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView(model: model)
         }
     }
-}
-
-struct ContentView: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("StoryCue")
-                .font(.largeTitle.bold())
-            Text(DuoSupport.buildDescription)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .padding()
-    }
-}
-
-#Preview {
-    ContentView()
 }
