@@ -21,7 +21,14 @@ S2a's `AppModel` compiles. S3 doesn't touch `AppModel`, any view, `StoryCueApp.s
 the input is `[ClipManifestEntry]` straight from `exportManifest(for:)`.
 
 **Independence:** S3 forks from `main` (`052a3ee` or later). It doesn't depend on PR #3
-(S2a) and must not import anything S2a adds.
+(S2a) and must not import anything S2a adds. Everything it consumes is already on `main`:
+`Deck`/`Question` (`StoryCue/Deck.swift`: `title`, `questions` in deck order, unique
+`Question.id`), `Segment`/`Clip`/`SegmentOutcome` (`SessionMachine.swift`),
+`ClipManifestEntry` (`ExportManifest.swift`), `SegmentFiles`. The deployment target is
+iOS 27.0 (`project.yml`), so every async AVFoundation/PhotoKit API named below is
+available unconditionally. If Swift 6 strict concurrency rejects AVFoundation types
+crossing an isolation boundary, use the pre-registered fix already used in S2a:
+`@preconcurrency import AVFoundation` in `Stitcher.swift` only.
 
 ## Decisions made here (Kimi does not re-decide these)
 
@@ -115,14 +122,17 @@ Rules:
 
 ```swift
 struct StitchReport: Equatable, Sendable {
-    let unreadable: [URL]           // sources whose tracks failed to load; skipped
-    let durationSeconds: Double
+    let unreadable: [URL]           // sources skipped: asset/video track failed to load, or duration <= 0
+    let durationSeconds: Double     // sum of the inserted video time ranges; 0 when nothing written
+    let outputWritten: Bool         // false iff every source was unreadable (no file at `output`)
 }
 
 protocol Stitcher: Sendable {
     /// Writes one .mov at `output` from `sources`, in order. Skips a source whose asset or
-    /// video track fails to load, and reports it in `unreadable`. Throws
-    /// ExportFailure.nothingToExport if no source is readable. Honors Task cancellation.
+    /// video track fails to load, and reports it in `unreadable`. If NO source is readable
+    /// it writes nothing and RETURNS a report with `outputWritten == false` (it does not
+    /// throw, so the unreadable list is never lost). Throws only for write/export errors
+    /// and cancellation. Honors Task cancellation.
     func stitch(_ sources: [URL], to output: URL) async throws -> StitchReport
 }
 
@@ -133,25 +143,30 @@ How `AVStitcher` builds the composition:
 - One `AVMutableComposition` with one video track and one audio track, both
   `kCMPersistentTrackID_Invalid`.
 - For each source, create an `AVURLAsset(url:)` and load it with
-  `try await asset.load(.duration)` and `asset.loadTracks(withMediaType: .video)`. A throw,
-  or no video track, marks the source unreadable and moves on to the next one.
+  `try await asset.load(.duration)` and `asset.loadTracks(withMediaType: .video)`. A throw, no video track, or a duration that
+  isn't positive marks the source unreadable and moves on to the next one.
 - Insert the video time range `CMTimeRange(start: .zero, duration: duration)` at the running
-  cursor. If the source has an audio track, insert it at the same cursor. A source with no
-  audio leaves a silent gap. It isn't an error, because S2a has a "no audio" state.
+  cursor. Then load audio with a separate `try? await asset.loadTracks(withMediaType: .audio)`;
+  a throw or an empty result means "no audio" (never unreadable). If there is an audio track,
+  load its `timeRange` and insert `CMTimeRange(start: .zero, duration: min(audioDuration, duration))`
+  at the same cursor, so a short audio track never makes the insert fail. A source with no
+  audio leaves a silent gap. It isn't an error, because S2a has a "no audio" state. Advance
+  the cursor by the video `duration`.
 - Set the composition video track's `preferredTransform` from the **first readable** source's
   video track (`load(.preferredTransform)`). The recorder is portrait-locked, so every
   segment carries the same transform.
 - Export with the preset from decision 4. Choose it with
   `await AVAssetExportSession.compatibility(ofExportPreset:with:outputFileType: .mov)`, then
   run `try await session.export(to: output, as: .mov)`. That's the async API, with no
-  `exportAsynchronously` and no completion handlers. Remove any file already at `output`
-  before exporting.
+  `exportAsynchronously` and no completion handlers. The async `export(to:as:)` cancels the
+  underlying export when its Task is cancelled; don't add a second cancel path (confirmed on
+  device at S5). Remove any file already at `output` before exporting.
 - `#if canImport(AVFoundation)` guards aren't needed, because this is an iOS-only target.
 
 ## 3. Photos — `StoryCue/PhotoLibrary.swift`
 
 ```swift
-enum PhotoAddAuth: Equatable, Sendable { case notDetermined, authorized, limited, denied, restricted }
+enum PhotoAddAuth: Equatable, Sendable { case notDetermined, authorized, denied, restricted }
 
 protocol PhotoLibrarySaving: Sendable {
     func addOnlyStatus() async -> PhotoAddAuth
@@ -162,8 +177,9 @@ protocol PhotoLibrarySaving: Sendable {
 struct PHPhotoLibrarySaver: PhotoLibrarySaving { init() }
 ```
 
-`.limited` counts as allowed. `PHPhotoLibrary.shared().performChanges` is used in its async
-form.
+Add-only access never reports `.limited`; if `PHAuthorizationStatus.limited` ever comes
+back, `PHPhotoLibrarySaver` maps it to `.authorized`, and an unknown future case maps to
+`.denied`. `PHPhotoLibrary.shared().performChanges` is used in its async form.
 
 ## 4. Orchestrator — `StoryCue/Exporter.swift`
 
@@ -174,8 +190,8 @@ struct ExportResult: Equatable, Sendable {
     let directory: URL                  // the per-export temp dir; S2b calls discard(_:) when done
     let files: [URL]                    // outputs written, in plan order
     let dropped: [DroppedSegment]       // planner drops + stitcher-unreadable (reason .unreadable)
-    let flaggedSegmentIDs: [UUID]
-    let savedToPhotos: Bool
+    let flaggedSegmentIDs: [UUID]       // plan order (output order, then source order)
+    let savedToPhotosCount: Int         // 0 for .files
 }
 
 actor Exporter {
@@ -188,16 +204,20 @@ actor Exporter {
         fileSize: @escaping @Sendable (URL) -> Int64?          // production: attributesOfItem size
     )
 
+    /// `progress(done, total)` is called after each output is stitched (total = planned
+    /// outputs). S2b drives its progress UI from it; cancellation is Task cancellation.
     func export(
         entries: [ClipManifestEntry], deck: Deck, sessionDate: Date,
-        unit: ExportUnit, destination: ExportDestination
+        unit: ExportUnit, destination: ExportDestination,
+        progress: @escaping @Sendable (Int, Int) -> Void = { _, _ in }
     ) async throws -> ExportResult
 
     /// Removes a result's temp directory. Idempotent.
     func discard(_ result: ExportResult)
 
-    /// Launch-time sweep: removes every <temporaryRoot>/Exports/* directory. S2b calls it at
-    /// launch. Nothing that's still in use survives a relaunch.
+    /// Launch-time sweep: removes every <temporaryRoot>/Exports/* directory. S2b calls it
+    /// once at launch, before any export can start (the app has no extensions), so it never
+    /// races a live export. Nothing that's still in use survives a relaunch.
     func purgeStaleExports()
 }
 ```
@@ -210,14 +230,26 @@ step 4:
    `TimeZone.current` in production. No outputs → throw `.nothingToExport`.
 3. Preflight space: `availableCapacity()` non-nil and less than
    `Int64(Double(plan.totalSourceBytes) * 1.1)` → throw
-   `.insufficientSpace(neededBytes:availableBytes:)`.
-4. Create `<temporaryRoot>/Exports/<UUID>/`, then stitch each output in plan order. Check
-   `Task.checkCancellation()` between outputs. Merge each `StitchReport.unreadable` into
-   `dropped` with reason `.unreadable`. If a stitch throws `.nothingToExport` for one
-   output, skip that output (its segments are already in `dropped`) and continue. If the
-   export ends with zero files, remove the directory and throw `.nothingToExport`.
+   `.insufficientSpace(neededBytes:availableBytes:)`. This is a floor, not a guarantee: the
+   re-encode fallback can outgrow it, which is why `.outOfSpace` is still mapped.
+4. Create `<temporaryRoot>/Exports/<UUID>/`, then stitch each output in plan order to
+   `directory.appendingPathComponent(output.fileName)`. Check `Task.checkCancellation()`
+   between outputs. Map each `StitchReport.unreadable` URL back to its segment with
+   `SegmentFiles.segmentID(from:)` plus a segmentID → questionID lookup built from
+   `entries`, and append it to `dropped` with reason `.unreadable` (planner drops first,
+   then stitcher drops in output order). A URL that maps to no planned segment is a
+   programming error: `assertionFailure`, then skip it. An output with
+   `outputWritten == false` contributes no file and continues; its segments are already in
+   `dropped` via its report. `flaggedSegmentIDs` keeps only flagged IDs that were actually
+   stitched (not in `unreadable`). If the export ends with zero files, remove the directory
+   and throw `.nothingToExport`. Call `progress` after each output.
 5. `.photos`: `saveVideo` each file in order. After all of them succeed, remove the temp
    directory. `files` stays in the result for reporting, and `directory` no longer exists.
+   **If save k+1 fails after k saves succeeded (k ≥ 1)**, remove the temp directory and throw
+   `.partiallySavedToPhotos(saved: k, total: files.count, cause: ExportFailure.from(error))`,
+   so S2b can say exactly how many clips are already in Photos. With k == 0 it throws the
+   mapped cause directly. There is no retry de-duplication in 1.0; the partial message tells
+   the user which clips already landed.
 6. **On any throw after step 4 starts, including cancellation, the temp directory is
    removed before the error propagates.** A failed export leaves nothing behind.
 
@@ -229,6 +261,7 @@ enum ExportFailure: Error, Equatable, Sendable {
     case insufficientSpace(neededBytes: Int64, availableBytes: Int64)
     case outOfSpace                      // disk filled during the write
     case photosDenied, photosRestricted
+    indirect case partiallySavedToPhotos(saved: Int, total: Int, cause: ExportFailure)
     case cancelled
     case failed(domain: String, code: Int)
 
@@ -259,6 +292,7 @@ The exporter wraps every throw in steps 4–5 with `from(_:)`, so callers only e
 - `outOfSpace`: "Your iPhone ran out of space during the export. Your recordings are safe. Free up some space and try again."
 - `photosDenied`: "StoryCue can't save to Photos. To allow it, go to Settings › StoryCue › Photos and choose Add Photos Only."
 - `photosRestricted`: "Saving to Photos is restricted on this iPhone. Export to Files instead."
+- `partiallySavedToPhotos`: "<saved> of <total> clips were saved to Photos before the export stopped. " followed by the cause's `userMessage`.
 - `cancelled`: "Export canceled. Your recordings are unchanged."
 - `failed`: "The export didn't finish. Your recordings are safe. Try again." (Domain and code go to
   the log, not into the copy.)
@@ -279,6 +313,7 @@ can throw).
 - `testWholeSessionOneOutputAllSourcesInOrder`
 - `testSourcesDerivedFromSegmentIDNotStoredURL`: a `.saved(url:)` pointing at `/nonexistent/...` still plans `SegmentFiles.url(for:in:)`
 - `testMissingFileDroppedWithReason`
+- `testDroppedIsInManifestOrderAcrossEntries`
 - `testEmptyFileDroppedWithReason`
 - `testEntryWithAllSourcesDroppedProducesNoOutput`
 - `testFailedKeptSegmentsAreFlagged`
@@ -293,6 +328,7 @@ can throw).
   `testMapsPhotosErrors`, `testPassesThroughExportFailure`, `testUnknownErrorKeepsDomainAndCode`
 - `testEveryPostWriteMessageSaysRecordingsAreSafe`: `outOfSpace`, `cancelled` and `failed` contain "recordings"
 - `testInsufficientSpaceMessageFormatsShortfall`
+- `testPartiallySavedMessageCountsAndIncludesCause`
 
 **`ExporterTests`** (`MockStitcher`, `MockPhotoLibrary`, a real temp dir under
 `FileManager.default.temporaryDirectory`, injected `fileSize` and `availableCapacity`):
@@ -305,6 +341,9 @@ can throw).
 - `testUnreadableSourcesMergedIntoDropped`
 - `testOutputWithNoReadableSourceIsSkippedOthersContinue`
 - `testAllOutputsUnreadableThrowsNothingToExportAndLeavesNoDirectory`
+- `testWhollyUnreadableOutputSegmentsAppearInDropped`: one output all-unreadable, another good; the export succeeds and every segment of the bad output is in `dropped` with `.unreadable` and its correct questionID (decision 3's enforcing test)
+- `testPhotosPartialFailureReportsSavedCountAndRemovesTempDirectory`
+- `testProgressCalledOncePerOutput`
 - `testStitchErrorMapsAndRemovesTempDirectory`
 - `testCancellationMidExportThrowsCancelledAndRemovesTempDirectory`
 - `testPhotosExportSavesEachFileThenRemovesTempDirectory`
@@ -319,7 +358,7 @@ can throw).
 - `testStitchesTwoSegmentsDurationIsSum`: 1.0 s + 1.0 s → 2.0 s ± 0.15
 - `testStitchesSegmentWithoutAudio`: one source with audio and one without → succeeds, with the durations summed
 - `testCorruptSourceReportedUnreadableOthersStitched`: random bytes named `.mov`, plus one good source
-- `testAllSourcesUnreadableThrowsNothingToExport`
+- `testAllSourcesUnreadableReturnsOutputNotWritten`: no throw, `outputWritten == false`, no file at `output`, every source in `unreadable`
 - **Pre-registered fallback:** if `SyntheticMovie.write` itself throws on the runner, because
   no encoder is available there, the test calls `XCTSkip("synthetic movie unavailable: \(error)")`.
   Only the helper's own failure is skippable. A stitch assertion that fails is a real
@@ -328,14 +367,17 @@ can throw).
 
 ## 7. Container-path fix in orphan recovery (S1 code, same rule as decision 2)
 
-`SessionStore.recoverOrphans()` currently checks `entry.fileURL.path`. After an app update
+`SessionStore.recoverOrphans()` currently checks `entry.fileURL.path`
+(`StoryCue/SessionStore.swift` on `main` at `052a3ee`:
+`let attributes = try? FileManager.default.attributesOfItem(atPath: entry.fileURL.path)`). After an app update
 that path may point into the old container, so a real recovered file would show as
 `fileExists: false`, which is the "vanished recording" this app promises never to cause.
 The fix changes one line. Compute the path as
 `SegmentFiles.url(for: entry.segmentID, in: segmentDirectory)`. `SessionStore` already holds
 `segmentDirectory`. Don't change `SegmentLedgerEntry`, which stays `Codable`-compatible.
 - New test in `SessionStoreTests`: `testRecoverOrphansUsesSegmentIDNotStoredPath`. Seed a
-  `.writing` ledger entry whose `fileURL` points at a nonexistent directory, while the real
+  `.writing` ledger entry (through the fixture's `SegmentLedger.record(_:)`, as the existing
+  `SessionStoreTests` fixture exposes it) whose `fileURL` points at a nonexistent directory, while the real
   file exists at `SegmentFiles.url(for:in:)`. Assert `fileExists == true`.
 
 ## Do not
@@ -350,9 +392,27 @@ The fix changes one line. Compute the path as
 
 ## Done when
 
-- All tests above exist with exactly these names, and the existing suite still passes on both
-  CI lanes. The new count is expected to be 89 plus about 40.
+- All tests above exist with exactly these names: **43 new test methods** (planner 12,
+  failure 8, exporter 18, stitcher 4, SessionStore 1). The existing suite still passes on
+  both CI lanes (`build.yml`'s baseline lane and its Duo lane), so the total is the
+  pre-S3 count on `main` plus 43.
 - `AVStitcherTests` is green or skipped, never red. A skip is recorded in STATE as "stitching
-  unverified until S5".
+  unverified until S5", AND adds "export a multi-segment clip to Files and to Photos, then
+  play both back" to the S5 device checklist. S3 isn't closed until one of those two holds.
 - Sol diff audit, focused on the data-loss paths: decision 2, decision 3, §4 step 6 and §7.
   The audit runs **after** CI has compiled the branch, never before.
+
+## Spec review (Kimi, 2026-09-22) — adjudication
+
+Kimi `--review` raised 22 points (`.orchestrate/s3-spec-review.txt`, not committed). **Accepted and
+folded in:** 1 (all-unreadable stitch threw away its report → `outputWritten`, no throw), 3
+(`.limited` unreachable for add-only), 4 (exact test count), 5 (URL → segment mapping), 6/7
+(audio insert range and audio-load failure), 8 (partial Photos save), 9 (duration
+provenance), 10 (progress callback), 11 (zero-duration, output path, flagged order), 13
+(decision 3's enforcing test), 14 (drop order test), 15 (quoted the S1 line), 16 (lanes named),
+17 (a skip must land on the S5 checklist), 18 (preflight is a floor), 19 (cancellation reaches
+the async export), 20 (purge is launch-only), 22 (pre-registered `@preconcurrency`).
+**Rejected:** 2 (`Deck` is on `main` in `Deck.swift` since week 1; S2a doesn't reshape it,
+now stated), 12 (deployment target is iOS 27.0; `AVError.diskFull` and
+`PHPhotosError.accessRestricted` exist), 21 (portrait-locked 1.0; a different transform
+needs a source the app can't produce).
