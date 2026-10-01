@@ -39,4 +39,54 @@ final class DeckDataTests: XCTestCase {
         let questions = Deck.v1Decks.flatMap(\.questions)
         XCTAssertFalse(questions.contains(where: \.isVHPSourced))
     }
+
+    // S4 copy lints (docs/S4-DECK-COPY-SPEC.md §4).
+
+    private var allQuestions: [Question] { Deck.v1Decks.flatMap(\.questions) }
+
+    func testNoV1QuestionIsPlaceholder() {
+        for q in allQuestions {
+            XCTAssertFalse(q.text.contains("TODO"), "\(q.id) is placeholder copy")
+            XCTAssertFalse(q.text.isEmpty, "\(q.id) is empty")
+            XCTAssertEqual(q.text, q.text.trimmingCharacters(in: .whitespacesAndNewlines), "\(q.id) has stray whitespace")
+        }
+    }
+
+    func testEveryV1QuestionEndsWithQuestionMark() {
+        for q in allQuestions {
+            XCTAssertTrue(q.text.hasSuffix("?"), "\(q.id) must end with ?")
+        }
+    }
+
+    func testEveryV1QuestionFitsTheOuterDisplay() {
+        for q in allQuestions {
+            let words = q.text.split(whereSeparator: \.isWhitespace).count
+            XCTAssertLessThanOrEqual(words, 15, "\(q.id) has \(words) words; max 15")
+            XCTAssertLessThanOrEqual(q.text.count, 80, "\(q.id) has \(q.text.count) characters; max 80")
+        }
+    }
+
+    func testNoV1QuestionOpensAsYesNo() {
+        let yesNoOpeners: Set<String> = [
+            "did", "do", "does", "have", "has", "is", "are", "was", "were", "can", "could",
+            "would", "will", "should", "am", "had", "don't", "doesn't", "didn't", "isn't",
+            "aren't", "wasn't", "weren't", "won't", "wouldn't", "hasn't", "haven't",
+        ]
+        for q in allQuestions {
+            let first = String(q.text.split(whereSeparator: \.isWhitespace).first ?? "")
+            let opener = String(first.lowercased().filter { $0.isLetter || $0 == "'" })
+            XCTAssertFalse(yesNoOpeners.contains(opener), "\(q.id) opens with yes/no word \"\(opener)\"")
+        }
+    }
+
+    func testV1QuestionTextIsUniqueAcrossDecks() {
+        let texts = allQuestions.map(\.text)
+        XCTAssertEqual(Set(texts).count, texts.count)
+    }
+
+    func testEveryV1QuestionIsPlainASCII() {
+        for q in allQuestions {
+            XCTAssertTrue(q.text.unicodeScalars.allSatisfy(\.isASCII), "\(q.id) must be plain ASCII")
+        }
+    }
 }
