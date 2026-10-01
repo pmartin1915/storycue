@@ -64,7 +64,7 @@ path after (or 1.1):
   4. ASC app record (name "StoryCue" is "for now" -- rename before the record exists is free, after is not).
   5. GitHub secrets on storycue, copied from Shortless (six + one profile). **As of 2026-09-30 `gh secret list` is empty -- none of this is done yet.**
   Then a session runs a minimal signed smoke build through `deploy.yml` (`workflow_dispatch`, Perry triggers or approves it) to prove the pipeline, and Perry runs PLAN §5 rung-4b's checklist on the device: permission grant/deny/revoke; repeated clips; background / incoming call / rotation / termination mid-clip; low-storage and orphan-segment recovery on relaunch; Photos + Files export then playback. Also the IDEAS item: deny camera, Open Settings, grant, return -- does iOS relaunch the app?
-  **Gap:** the export UI belongs to **S2b (library), still unspecced**, so rung-4b's "Photos + Files export then playback" item cannot run on device until S2b lands. Either spec S2b before the device window or split rung 4b (recorder now, export later) -- Perry's call.
+  **Rung 4b is SPLIT (Perry, 2026-10-01).** **4b-recorder** runs in the 10-02..10-04 window: every checklist item above *except* "Photos + Files export then playback". **4b-export** runs after **S2b (library + export UI, still unspecced)** lands, and spec-ing S2b is the next build step after the device window. Reason: the export UI belongs to S2b, and rushing S2b in before the window was the alternative.
 - [ ] S6 Privacy policy, metadata, featuring nomination
 - [ ] S7 2026-10-10 pivot check, **re-framed**: "is there a RELEASE 27.1+ Xcode on the image and does ASC accept 27.1 builds" -- a beta on the image does not count
 - [ ] S8 Submit by 10-16; S9 Duo path after
