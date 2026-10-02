@@ -15,7 +15,12 @@ struct ClipManifestEntry: Equatable, Sendable {
 /// segments produces no entry at all — omitted, not an empty entry. Entries are in
 /// `state.clips` array order (order of each question's first segment start).
 func exportManifest(for state: SessionState) -> [ClipManifestEntry] {
-    state.clips.compactMap { clip in
+    exportManifest(for: state.clips)
+}
+
+/// Same rules over a bare clip list (the session library stores clips, not a SessionState).
+func exportManifest(for clips: [Clip]) -> [ClipManifestEntry] {
+    clips.compactMap { clip in
         let segments = clip.segments.filter { segment in
             switch segment.outcome {
             case .saved:

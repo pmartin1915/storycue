@@ -63,4 +63,70 @@ enum UICopy {
             return ""   // never shown
         }
     }
+
+    // MARK: - S2b: library, recovery, delete, export
+
+    /// Human-readable file size (`ByteCountFormatter`, `.file` style).
+    static func fileSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    static let unknownQuestion = "A question"
+
+    static let libraryButton = "Recordings"
+    static let libraryTitle = "Recordings"
+    static let libraryEmptyTitle = "No recordings yet"
+    static let libraryEmptyBody = "Choose a deck to record your first conversation."
+    static func clipCount(_ n: Int) -> String { n == 1 ? "1 answer" : "\(n) answers" }
+
+    static func storageFooter(used: Int64, available: Int64?) -> String {
+        var text = "Recordings use \(fileSize(used))."
+        if let available {
+            text += " \(fileSize(available)) free on this iPhone."
+        }
+        return text
+    }
+
+    static func lowSpaceBanner(_ available: Int64?) -> String {
+        if let available {
+            return "Your iPhone is almost full (\(fileSize(available)) free). Long answers may not fit."
+        }
+        return "Your iPhone is almost full. Long answers may not fit."
+    }
+    static let lowSpaceConsentNote = "Your iPhone is low on space. Free some up before a long conversation."
+
+    static let recoveredHeader = "Recovered clips"
+    static let recoveredExplainer = "StoryCue closed while these were recording. They may end early. Keep them or delete them."
+    static let recoveredUndecided = "Recovered after StoryCue closed. It may end early."
+    static let keep = "Keep"
+    static let deleteClip = "Delete clip"
+    static let deleteClipConfirm = "Delete this clip? This can't be undone."
+    static let deleteSession = "Delete recording"
+    static let deleteSessionConfirm = "Delete this whole recording? This can't be undone."
+    static let sessionGone = "This recording was deleted."
+    static let mayBeIncomplete = "Part of this answer may be incomplete."
+
+    static let export = "Export"
+    static let exportTitle = "Export"
+    static let exportEachAnswer = "Each answer"
+    static let exportOneVideo = "One video"
+    static let exportToFiles = "Save or share…"
+    static let exportToPhotos = "Save to Photos"
+    static func exporting(_ done: Int, _ total: Int) -> String {
+        total == 0 ? "Preparing…" : "Exporting \(done) of \(total)…"
+    }
+    static func exportDone(destination: ExportDestination, count: Int) -> String {
+        switch destination {
+        case .photos:
+            return count == 1 ? "Saved 1 video to Photos." : "Saved \(count) videos to Photos."
+        case .files:
+            return count == 1 ? "Exported 1 video." : "Exported \(count) videos."
+        }
+    }
+    static func droppedNote(_ n: Int) -> String {
+        n == 1 ? "1 part couldn't be read and was left out." : "\(n) parts couldn't be read and were left out."
+    }
+    static let flaggedNote = "Part of this export may be incomplete."
 }

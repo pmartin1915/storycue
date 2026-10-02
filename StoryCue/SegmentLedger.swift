@@ -67,4 +67,18 @@ actor SegmentLedger {
     func orphanedEntries() async throws -> [SegmentLedgerEntry] {
         try load().filter { $0.status == .writing }
     }
+
+    /// Drops the entries for these segments (S2b delete/discard). Atomic save; unknown IDs
+    /// are ignored.
+    func remove(segmentIDs: Set<UUID>) async throws {
+        let entries = try load()
+        let remaining = entries.filter { !segmentIDs.contains($0.segmentID) }
+        guard remaining.count != entries.count else { return }
+        try save(remaining)
+    }
+
+    /// Every entry, whatever its status (S2b launch reconciliation).
+    func allEntries() async throws -> [SegmentLedgerEntry] {
+        try load()
+    }
 }

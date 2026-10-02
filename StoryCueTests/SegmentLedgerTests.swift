@@ -50,4 +50,36 @@ final class SegmentLedgerTests: XCTestCase {
         XCTAssertEqual(all, [other])
         XCTAssertTrue(all.allSatisfy { $0.status == .writing })
     }
+
+    func testRemoveDropsOnlyNamedEntries() async throws {
+        let directory = try makeTempDirectory()
+        let keep = makeEntry(directory: directory)
+        let drop = makeEntry(directory: directory)
+        let alsoDrop = makeEntry(directory: directory, status: .finished)
+
+        let ledger = SegmentLedger(directory: directory)
+        try await ledger.record(keep)
+        try await ledger.record(drop)
+        try await ledger.record(alsoDrop)
+        try await ledger.remove(segmentIDs: [drop.segmentID, alsoDrop.segmentID, UUID()])
+
+        let fresh = SegmentLedger(directory: directory)
+        let all = try await fresh.allEntries()
+        XCTAssertEqual(all, [keep])
+    }
+
+    func testAllEntriesReturnsEveryStatus() async throws {
+        let directory = try makeTempDirectory()
+        let writing = makeEntry(directory: directory, status: .writing)
+        let finished = makeEntry(directory: directory, status: .finished)
+        let orphaned = makeEntry(directory: directory, status: .orphaned)
+
+        let ledger = SegmentLedger(directory: directory)
+        try await ledger.record(writing)
+        try await ledger.record(finished)
+        try await ledger.record(orphaned)
+
+        let all = try await ledger.allEntries()
+        XCTAssertEqual(all, [writing, finished, orphaned])
+    }
 }

@@ -40,6 +40,8 @@ actor MockCaptureService: CaptureService {
     // test hold beginSession() inside `await store.prepareCapture()` — AppModel.isPreparing.
     private(set) var stubAuthorizationDelay: Double = 0
     func setStubAuthorizationDelay(_ seconds: Double) { stubAuthorizationDelay = seconds }
+    private(set) var stubShutdownDelay: Double = 0
+    func setStubShutdownDelay(_ seconds: Double) { stubShutdownDelay = seconds }
 
     // Unbounded buffering with the continuation created in init (not lazily on first
     // access), so simulate() calls made before a subscriber starts iterating are
@@ -109,6 +111,9 @@ actor MockCaptureService: CaptureService {
     }
 
     func shutdown() async {
+        if stubShutdownDelay > 0 {
+            try? await Task.sleep(for: .seconds(stubShutdownDelay))
+        }
         shutdownCount += 1
         continuation.finish()
     }

@@ -7,6 +7,7 @@ struct StoryCueApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: model)
+                .task { await model.library.load() }
         }
     }
 }
