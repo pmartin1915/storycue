@@ -6,6 +6,7 @@ import SwiftUI
 struct ExportView: View {
     @Bindable var model: ExportModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var isRunning: Bool {
         if case .running = model.phase { return true }
@@ -19,11 +20,14 @@ struct ExportView: View {
 
     var body: some View {
         NavigationStack {
-            content
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .navigationTitle(UICopy.exportTitle)
-                .navigationBarTitleDisplayMode(.inline)
+            // Scrolls so long result/failure copy at accessibility sizes can't push Done off screen.
+            ScrollView {
+                content
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .navigationTitle(UICopy.exportTitle)
+            .navigationBarTitleDisplayMode(.inline)
         }
         .interactiveDismissDisabled(isRunning)
         .onDisappear {
@@ -82,12 +86,16 @@ struct ExportView: View {
 
     private var choosing: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Picker(UICopy.exportTitle, selection: $model.unit) {
-                Text(UICopy.exportEachAnswer).tag(ExportUnit.perClip)
-                Text(UICopy.exportOneVideo).tag(ExportUnit.wholeSession)
+            // Segments can't wrap, so at accessibility sizes the choice becomes a menu button.
+            if dynamicTypeSize.isAccessibilitySize {
+                unitPicker
+                    .pickerStyle(.menu)
+                    .frame(minHeight: 44)
+            } else {
+                unitPicker
+                    .pickerStyle(.segmented)
+                    .frame(minHeight: 44)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
 
             Button(UICopy.exportToFiles) { model.start(.files) }
                 .buttonStyle(.borderedProminent)
@@ -99,6 +107,14 @@ struct ExportView: View {
                 .font(.title2)
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
+    }
+
+    private var unitPicker: some View {
+        Picker(UICopy.exportTitle, selection: $model.unit) {
+            Text(UICopy.exportEachAnswer).tag(ExportUnit.perClip)
+            Text(UICopy.exportOneVideo).tag(ExportUnit.wholeSession)
+        }
+        .labelsHidden()
     }
 
     private func running(done: Int, total: Int) -> some View {
