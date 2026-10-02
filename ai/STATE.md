@@ -57,7 +57,16 @@ path after (or 1.1):
 - [ ] S2b library (not specced; depends on S2a's `AppModel`)
 - [x] S3 Export engine -- **merged 2026-09-23, PR #4 squash `25f4ef3`.** Spec `docs/S3-EXPORT-SPEC.md` (Kimi spec review: 19 of 22 accepted). Kimi build, then 7 CI rounds of boss compile fixes (Swift 6 test issues, a type-checker crash in the synthetic-movie helper, a wrong expected string). Sol diff audit `docs/reviews/S3-SOL-AUDIT-2026-09-23.md`: 6 of 7 fixed, including a blocking one where two unknown-question clips shared the name `Q00` and the second overwrote the first. `AVStitcherTests` ran for real on the simulator (not skipped), so stitching is verified in CI; S5 still checks export plus playback on device. CI **166/166 on both lanes** (run `35921483477`). Includes the `recoverOrphans()` container-path fix. The Export UI belongs to S2b.
 - [x] S4 Deck copy -- **merged 2026-09-30, PR #5 squash `55d6b33`.** Spec + full copy `docs/S4-DECK-COPY-SPEC.md`: 50 original questions (5 decks x 10, IDs/counts unchanged), Opus-drafted. Kimi was at its weekly cap (403), so the readability pass was a fresh-context Sonnet review: 17 lines changed, adjudicated in spec §6. Six copy-lint tests in `DeckDataTests` (no TODO, ends in `?`, <=15 words / <=80 chars, no yes/no opener, unique, ASCII). Written by Opus directly (no executor; Kimi out of quota). CI **172/172, both lanes** (run `36812705171`).
-- [ ] **S5 -- NEXT.** Rung 4b on the 16 Pro via TestFlight, targeted 10-02..10-04. **What Perry needs on 10-02 (operator acts, STRATEGY "Execution" list, hard latest 10-03):**
+- [ ] **S5 -- NEXT.** Rung 4b on the 16 Pro via TestFlight, targeted 10-02..10-04.
+  **Pipeline DONE 2026-10-02; first TestFlight build uploaded: 1.0 (6.1)**, deploy run `36989598761` (Delivery UUID `39396655-9fab-4eb5-975a-f040391cad69`), on release `Xcode_27.app` (27A266a). Smoke run `36989433123` (upload=false) green first. What got done:
+  - Distribution cert expires **2027-03-14** -- no renewal. App IDs `dev.pmartin1915.storycue` + `.retold` already existed.
+  - Profile **"StoryCue AppStore"** (name must match `project.yml` `PROVISIONING_PROFILE_SPECIFIER` and `deploy.yml` export options -- the first attempt named it "StoryCue App Store" and the archive failed on it).
+  - ASC record **StoryCue**, Apple ID `6818468570`, SKU `storycue`, en-US, Full Access.
+  - All 7 secrets set. API key = "Github Actions" `TM3T3B7QBF` (same as Shortless). **Cert: storycue has its OWN `.p12`** (`C:\tmp\apple-signing\storycue.p12`, rebuilt from `distribution.key` + `.pem` with `-legacy`, new password in Perry's password manager) because the original `.p12` password was lost. Same signing identity as the other apps; their secrets untouched.
+  - Traps hit: a `!`-prefixed `gh secret set` saves an EMPTY value (no TTY) -- run interactive secret prompts in a real terminal. `security import` reports a wrong/empty password as "passphrase not correct".
+  - Local `.claude/settings.local.json` (globally gitignored) allows `gh secret set|list -R pmartin1915/storycue`.
+  **Remaining: Perry runs the 4b-recorder checklist below on the 16 Pro once 6.1 finishes processing in TestFlight.**
+  Original operator-act list (kept for history):
   1. Check the distribution certificate's expiry.
   2. App ID `dev.pmartin1915.storycue` (and `dev.pmartin1915.retold` in the same sitting).
   3. App Store provisioning profile for it.
