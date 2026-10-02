@@ -15,6 +15,9 @@ final class AppModel {
     }
 
     private(set) var active: ActiveSession?
+    /// The shutdown + finish of the session `endSession` just closed. `beginSession` waits for
+    /// it, so the camera is released and the old session stays protected until finish lands.
+    @ObservationIgnored private var ending: Task<Void, Never>?
     let ledger: SegmentLedger
     let segmentDirectory: URL
     let library: Library
@@ -91,6 +94,10 @@ final class AppModel {
     /// leaves with "Done".
     func beginSession(deck: Deck) async {
         guard active == nil else { return }
+        if let ending {
+            await ending.value
+            guard active == nil else { return }
+        }
         let id = UUID()
         let startedAt = Date()
         let capture = makeCapture(segmentDirectory)
@@ -137,12 +144,19 @@ final class AppModel {
         let clips = active.store.state.clips
         active.store.stop()
         self.active = nil
-        await capture.shutdown()
-        await library.finish(sessionID: id, deck: deck, startedAt: startedAt, clips: clips)
-        // Cleared only after finish: while the camera shuts down the session must stay
-        // protected, or a delete/discard in that window is undone by finish's stale clips.
-        // A session begun meanwhile owns the ID now, so leave it alone.
-        if library.activeSessionID == id { library.activeSessionID = nil }
+        // activeSessionID is cleared only after finish: while the camera shuts down the
+        // session must stay protected, or a delete/discard in that window is undone by
+        // finish's stale clips. beginSession waits on `ending`, so nothing replaces the ID.
+        let library = self.library
+        let previous = ending
+        let task = Task { @MainActor in
+            await previous?.value
+            await capture.shutdown()
+            await library.finish(sessionID: id, deck: deck, startedAt: startedAt, clips: clips)
+            if library.activeSessionID == id { library.activeSessionID = nil }
+        }
+        ending = task
+        await task.value
         return true
     }
 }

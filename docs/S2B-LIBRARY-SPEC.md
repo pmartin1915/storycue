@@ -268,8 +268,10 @@ static let attributesFileSize: @Sendable (URL) -> Int64?   // attributesOfItem s
   the first await (S2a rule). Capture `id`, `deck`, `startedAt` and `store.state.clips` into
   locals first, all before the first await; then `await capture.shutdown()` (release the camera
   first), then `await library.finish(...)`, and only then clear `library.activeSessionID` (if it
-  still equals `id`). Amended 2026-10-02 after the Sol audit: clearing it before the awaits let a
-  delete or discard during shutdown be undone by `finish`. The
+  still equals `id`). That tail runs as a stored `ending` task, and `beginSession` awaits it
+  first, so a new session can't replace the protected ID or overlap the old camera. Amended
+  2026-10-02 after the Sol audit: clearing it before the awaits let a delete or discard during
+  shutdown be undone by `finish`. The
   local clips are final: `endSession` only proceeds from `.idle`/`.paused`, which the reducer
   reaches only after `fileOutputFinished` has set the outcome; a still-queued `.persistLedger`
   only writes the ledger.
