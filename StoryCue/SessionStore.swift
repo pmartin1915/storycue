@@ -48,6 +48,9 @@ final class SessionStore {
     private let ledger: SegmentLedger
     private let segmentDirectory: URL
     private let background: any BackgroundTaskRunner
+    /// S2b checkpoint hook: called with `state.clips` after a segment's capture starts and at
+    /// the end of every `.persistLedger`. Nowhere else.
+    private let archive: (@MainActor ([Clip]) -> Void)?
 
     // Effects run strictly in order, FIFO across calls: send reduces synchronously on the
     // main actor (state is never stale), appends effects to one queue, and a single
@@ -65,7 +68,8 @@ final class SessionStore {
         ledger: SegmentLedger,
         segmentDirectory: URL,
         background: any BackgroundTaskRunner,
-        now: Date = Date()
+        now: Date = Date(),
+        archive: (@MainActor ([Clip]) -> Void)? = nil
     ) {
         self.state = SessionState(
             deck: deck,
@@ -80,6 +84,7 @@ final class SessionStore {
         self.segmentDirectory = segmentDirectory
         self.background = background
         self.now = now
+        self.archive = archive
     }
 
     // MARK: - Event pump and ticker
@@ -233,6 +238,7 @@ final class SessionStore {
             try? await ledger.record(entry)
             do {
                 try await capture.startSegment(id: id, for: questionID)
+                archive?(state.clips)
             } catch {
                 if (error as? CaptureServiceError) == .notAuthorized {
                     captureAvailability = .notAuthorized
@@ -291,6 +297,7 @@ final class SessionStore {
             for segment in clip.segments where segment.outcome != nil {
                 try? await ledger.markFinished(segment.id)
             }
+            archive?(state.clips)
         }
     }
 

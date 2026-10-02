@@ -15,7 +15,7 @@ final class SessionStoreTests: XCTestCase {
 
     private let deck = Deck.v1Decks[0]
 
-    private func makeStore() async -> Fixture {
+    private func makeStore(archive: (@MainActor ([Clip]) -> Void)? = nil) async -> Fixture {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let ledger = SegmentLedger(directory: directory)
@@ -26,7 +26,8 @@ final class SessionStoreTests: XCTestCase {
             capture: mock,
             ledger: ledger,
             segmentDirectory: directory,
-            background: background
+            background: background,
+            archive: archive
         )
         return Fixture(store: store, mock: mock, ledger: ledger, background: background, directory: directory)
     }
@@ -463,4 +464,107 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(store.recoveredSegments[1].entry.segmentID, missingID)
         XCTAssertFalse(store.recoveredSegments[1].fileExists)
     }
+
+    // MARK: - S2b archive hook
+
+    func testArchiveCalledAfterCaptureStart() async {
+        let probe = OrderProbe()
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let mock = MockCaptureService()
+        let store = SessionStore(
+            deck: deck,
+            capture: OrderedCapture(inner: mock, probe: probe),
+            ledger: SegmentLedger(directory: directory),
+            segmentDirectory: directory,
+            background: FakeBackgroundTaskRunner(),
+            archive: { clips in
+                probe.log.append("archive")
+                probe.archived.append(clips)
+            }
+        )
+        store.start()
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+
+        guard let recording = currentRecording(store) else { return XCTFail("expected .recording") }
+        XCTAssertEqual(probe.log, ["start", "archive"])
+        XCTAssertEqual(probe.archived.count, 1)
+        let archivedSegmentIDs = probe.archived.last?.flatMap(\.segments).map(\.id) ?? []
+        XCTAssertEqual(archivedSegmentIDs, [recording.id])
+    }
+
+    func testArchiveCalledOnPersistLedger() async {
+        let probe = OrderProbe()
+        let fixture = await makeStore(archive: { clips in probe.archived.append(clips) })
+        let store = fixture.store
+        store.start()
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+        guard let recording = currentRecording(store) else { return XCTFail("expected .recording") }
+
+        store.send(.tapPause)
+        await store.waitForIdleEffects()
+        await fixture.mock.simulate(.segmentFinished(
+            segmentID: recording.id,
+            outcome: .saved(url: SegmentFiles.url(for: recording.id, in: fixture.directory))
+        ))
+        await store.waitForIdleEffects()
+
+        let lastSegments = probe.archived.last?.flatMap(\.segments) ?? []
+        XCTAssertEqual(lastSegments.map(\.id), [recording.id])
+        let lastOutcome = lastSegments.first?.outcome
+        XCTAssertNotNil(lastOutcome)
+    }
+
+    func testNoArchiveClosureIsFine() async {
+        let fixture = await makeStore()
+        let store = fixture.store
+        store.start()
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+
+        XCTAssertNotNil(currentRecording(store))
+    }
+}
+
+/// Collects the order of capture-start and archive calls, and the archived clip lists.
+@MainActor
+private final class OrderProbe {
+    var log: [String] = []
+    var archived: [[Clip]] = []
+}
+
+/// Wraps MockCaptureService and records "start" once the inner start has returned, so a
+/// test can see whether the archive hook ran before or after capture started.
+private actor OrderedCapture: CaptureService {
+    private let inner: MockCaptureService
+    private let probe: OrderProbe
+
+    nonisolated let previewSource: any PreviewSource = NoPreviewSource()
+
+    init(inner: MockCaptureService, probe: OrderProbe) {
+        self.inner = inner
+        self.probe = probe
+    }
+
+    nonisolated var events: AsyncStream<CaptureServiceEvent> { inner.events }
+
+    var hasAudioInput: Bool {
+        get async { await inner.hasAudioInput }
+    }
+
+    func startSegment(id: UUID, for questionID: String) async throws {
+        try await inner.startSegment(id: id, for: questionID)
+        let probe = self.probe
+        await MainActor.run { probe.log.append("start") }
+    }
+
+    func stopSegment(_ segmentID: UUID) async { await inner.stopSegment(segmentID) }
+    func configureSession() async throws { try await inner.configureSession() }
+    func authorization() async -> CaptureAuthorization { await inner.authorization() }
+    func requestAuthorization() async -> CaptureAuthorization { await inner.requestAuthorization() }
+    func reduceFrameRate() async { await inner.reduceFrameRate() }
+    func recreateSession() async throws { try await inner.recreateSession() }
+    func shutdown() async { await inner.shutdown() }
 }

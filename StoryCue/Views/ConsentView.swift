@@ -28,6 +28,12 @@ struct ConsentView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
+                if model.library.storage.isLow {
+                    Text(UICopy.lowSpaceConsentNote)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
                 Button(UICopy.consentConfirm) {
                     isBeginning = true
                     Task {
@@ -38,7 +44,7 @@ struct ConsentView: View {
                 }
                 .font(.title2)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .disabled(isBeginning)
+                .disabled(isBeginning || !model.library.isLoaded)
                 .accessibilityLabel(UICopy.consentConfirm)
             }
             .padding()

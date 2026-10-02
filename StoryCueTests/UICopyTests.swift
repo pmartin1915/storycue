@@ -50,4 +50,14 @@ final class UICopyTests: XCTestCase {
         }
         XCTAssertFalse(source.contains("TODO"), "user-visible copy must not contain TODO")
     }
+
+    func testClipCountPlural() {
+        XCTAssertEqual(UICopy.clipCount(1), "1 answer")
+        XCTAssertEqual(UICopy.clipCount(2), "2 answers")
+    }
+
+    func testExportingPreparingAtZero() {
+        XCTAssertEqual(UICopy.exporting(0, 0), "Preparing…")
+        XCTAssertEqual(UICopy.exporting(1, 3), "Exporting 1 of 3…")
+    }
 }

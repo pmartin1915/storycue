@@ -7,6 +7,8 @@ import Foundation
 @Observable
 final class AppModel {
     struct ActiveSession {
+        let id: UUID
+        let startedAt: Date
         let deck: Deck
         let store: SessionStore
         let capture: any CaptureService
@@ -15,17 +17,51 @@ final class AppModel {
     private(set) var active: ActiveSession?
     let ledger: SegmentLedger
     let segmentDirectory: URL
+    let library: Library
+    let exporter: Exporter
 
     private let makeCapture: @MainActor (URL) -> any CaptureService
     private let makeBackground: @MainActor () -> any BackgroundTaskRunner
 
+    /// attributesOfItem size, nil on error.
+    nonisolated static let attributesFileSize: @Sendable (URL) -> Int64? = { url in
+        ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value
+    }
+
+    /// The volume's "important usage" available capacity for `url`, nil on error.
+    nonisolated static func importantUsageCapacity(at url: URL) -> Int64? {
+        let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage
+    }
+
     init(
         segmentDirectory: URL,
         makeCapture: @escaping @MainActor (URL) -> any CaptureService,
-        makeBackground: @escaping @MainActor () -> any BackgroundTaskRunner
+        makeBackground: @escaping @MainActor () -> any BackgroundTaskRunner,
+        exporter: Exporter? = nil,
+        availableCapacity: @escaping @Sendable () -> Int64? = { nil },
+        fileSize: @escaping @Sendable (URL) -> Int64? = AppModel.attributesFileSize
     ) {
+        let ledger = SegmentLedger(directory: segmentDirectory)
+        let resolvedExporter = exporter ?? Exporter(
+            segmentDirectory: segmentDirectory,
+            temporaryRoot: FileManager.default.temporaryDirectory,
+            stitcher: AVStitcher(),
+            photos: PHPhotoLibrarySaver(),
+            availableCapacity: { AppModel.importantUsageCapacity(at: FileManager.default.temporaryDirectory) },
+            fileSize: AppModel.attributesFileSize
+        )
         self.segmentDirectory = segmentDirectory
-        self.ledger = SegmentLedger(directory: segmentDirectory)
+        self.ledger = ledger
+        self.exporter = resolvedExporter
+        self.library = Library(
+            segmentDirectory: segmentDirectory,
+            index: SessionIndex(directory: segmentDirectory),
+            ledger: ledger,
+            exporter: resolvedExporter,
+            availableCapacity: availableCapacity,
+            fileSize: fileSize
+        )
         self.makeCapture = makeCapture
         self.makeBackground = makeBackground
     }
@@ -40,7 +76,8 @@ final class AppModel {
         return AppModel(
             segmentDirectory: segmentDirectory,
             makeCapture: { AVCaptureService(segmentDirectory: $0) },
-            makeBackground: { UIKitBackgroundTaskRunner() }
+            makeBackground: { UIKitBackgroundTaskRunner() },
+            availableCapacity: { AppModel.importantUsageCapacity(at: segmentDirectory) }
         )
     }
 
@@ -54,15 +91,21 @@ final class AppModel {
     /// leaves with "Done".
     func beginSession(deck: Deck) async {
         guard active == nil else { return }
+        let id = UUID()
+        let startedAt = Date()
         let capture = makeCapture(segmentDirectory)
         let store = SessionStore(
             deck: deck,
             capture: capture,
             ledger: ledger,
             segmentDirectory: segmentDirectory,
-            background: makeBackground()
+            background: makeBackground(),
+            archive: { [weak library = self.library] clips in
+                library?.checkpoint(sessionID: id, deck: deck, startedAt: startedAt, clips: clips)
+            }
         )
-        active = ActiveSession(deck: deck, store: store, capture: capture)
+        active = ActiveSession(id: id, startedAt: startedAt, deck: deck, store: store, capture: capture)
+        library.activeSessionID = id
         store.start()
         isPreparing = true
         await store.prepareCapture()
@@ -73,7 +116,10 @@ final class AppModel {
     /// store's phase is .recording or .finishing. The check, store.stop() and
     /// `active = nil` all happen synchronously on the main actor BEFORE the first await,
     /// so no event can slip between them (AppModel and SessionStore are both @MainActor);
-    /// then `await capture.shutdown()` on the captured local. No active session → true.
+    /// then the camera is released (`capture.shutdown()`) and the session is handed to the
+    /// library. The clips captured here are final: this only proceeds from .idle/.paused,
+    /// which the reducer reaches only after fileOutputFinished set the outcome; a still-queued
+    /// .persistLedger only writes the ledger. No active session → true.
     @discardableResult
     func endSession() async -> Bool {
         guard let active else { return true }
@@ -85,9 +131,15 @@ final class AppModel {
             break
         }
         let capture = active.capture
+        let id = active.id
+        let deck = active.deck
+        let startedAt = active.startedAt
+        let clips = active.store.state.clips
         active.store.stop()
         self.active = nil
+        library.activeSessionID = nil
         await capture.shutdown()
+        await library.finish(sessionID: id, deck: deck, startedAt: startedAt, clips: clips)
         return true
     }
 }

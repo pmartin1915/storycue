@@ -155,4 +155,74 @@ final class AppModelTests: XCTestCase {
         let orientations = Bundle(for: AppModel.self).infoDictionary?["UISupportedInterfaceOrientations"] as? [String]
         XCTAssertEqual(orientations, ["UIInterfaceOrientationPortrait"])
     }
+
+    // MARK: - S2b: library wiring
+
+    func testBeginSessionSetsLibraryActiveID() async {
+        let model = makeModel()
+        XCTAssertNil(model.library.activeSessionID)
+
+        await model.beginSession(deck: deck)
+
+        XCTAssertNotNil(model.active)
+        XCTAssertEqual(model.library.activeSessionID, model.active?.id)
+    }
+
+    func testRecordingCheckpointsIntoLibrary() async {
+        let model = makeModel()
+        await model.library.load()
+        await model.beginSession(deck: deck)
+        guard let store = model.active?.store else { return XCTFail("expected an active session") }
+
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+        await model.library.waitForPendingSaves()
+
+        XCTAssertEqual(model.library.sessions.count, 1)
+        XCTAssertEqual(model.library.sessions.first?.isFinished, false)
+        XCTAssertEqual(model.library.sessions.first?.id, model.active?.id)
+    }
+
+    func testEndSessionFinishesRecord() async {
+        let spy = FactorySpy()
+        let model = makeModel(spy: spy)
+        await model.library.load()
+        await model.beginSession(deck: deck)
+        guard let store = model.active?.store else { return XCTFail("expected an active session") }
+
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+        guard case let .recording(segmentID) = store.state.phase else {
+            return XCTFail("expected .recording, got \(store.state.phase)")
+        }
+        store.send(.tapPause)
+        await store.waitForIdleEffects()
+        let mock = spy.captures[0]
+        await mock.simulate(.segmentFinished(
+            segmentID: segmentID,
+            outcome: .saved(url: SegmentFiles.url(for: segmentID, in: model.segmentDirectory))
+        ))
+        await store.waitForIdleEffects()
+
+        let ended = await model.endSession()
+        await model.library.waitForPendingSaves()
+
+        XCTAssertTrue(ended)
+        XCTAssertNil(model.library.activeSessionID)
+        XCTAssertEqual(model.library.sessions.count, 1)
+        XCTAssertEqual(model.library.sessions.first?.isFinished, true)
+    }
+
+    func testEndSessionWithNoClipsLeavesNoRecord() async {
+        let model = makeModel()
+        await model.library.load()
+        await model.beginSession(deck: deck)
+
+        let ended = await model.endSession()
+        await model.library.waitForPendingSaves()
+
+        XCTAssertTrue(ended)
+        XCTAssertNil(model.library.activeSessionID)
+        XCTAssertTrue(model.library.sessions.isEmpty)
+    }
 }

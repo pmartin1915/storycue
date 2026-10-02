@@ -1,0 +1,444 @@
+import Foundation
+import Observation
+
+struct StorageStatus: Equatable, Sendable {
+    static let lowSpaceThreshold: Int64 = 1_000_000_000   // on the struct, not the @MainActor class
+    let usedBytes: Int64            // sum of *.mov sizes in the segment directory
+    let availableBytes: Int64?      // nil when the volume won't say
+    var isLow: Bool { availableBytes.map { $0 < Self.lowSpaceThreshold } ?? false }
+}
+
+struct RecoveredClip: Equatable, Identifiable, Sendable {
+    let sessionID: UUID
+    let segment: Segment            // outcome == nil
+    var id: UUID { segment.id }
+}
+
+/// The session library: the index is the source of truth, the ledger its recovery backstop
+/// (S2b spec decision 1). Every mutation updates `sessions` synchronously on the main actor,
+/// then enqueues a serial, ordered index save. The only code that deletes a segment file is
+/// `delete`, `discard` and the nothing-kept branch of `finish`; the export path never does.
+@MainActor
+@Observable
+final class Library {
+    private(set) var sessions: [SessionRecord] = []      // newest startedAt first
+    private(set) var storage = StorageStatus(usedBytes: 0, availableBytes: nil)
+    private(set) var isLoaded = false
+    private(set) var exportingSessionIDs: Set<UUID> = []
+    var activeSessionID: UUID?                           // set/cleared by AppModel
+
+    /// Nil-outcome segments in `sessions` order, excluding the active session's (that nil is
+    /// a live recording).
+    var recovered: [RecoveredClip] {
+        var result: [RecoveredClip] = []
+        for record in sessions where record.id != activeSessionID {
+            for clip in record.clips {
+                for segment in clip.segments where segment.outcome == nil {
+                    result.append(RecoveredClip(sessionID: record.id, segment: segment))
+                }
+            }
+        }
+        return result
+    }
+
+    private let segmentDirectory: URL
+    private let index: SessionIndex
+    private let ledger: SegmentLedger
+    private let exporter: Exporter
+    private let availableCapacity: @Sendable () -> Int64?
+    private let fileSize: @Sendable (URL) -> Int64?
+
+    private var closedSessionIDs: Set<UUID> = []
+    private var deletingSessionIDs: Set<UUID> = []
+    private var savesSuspended = false
+    private var isLoading = false
+    private var saveTask: Task<Void, Never>?
+
+    init(
+        segmentDirectory: URL,
+        index: SessionIndex,
+        ledger: SegmentLedger,
+        exporter: Exporter,
+        availableCapacity: @escaping @Sendable () -> Int64?,
+        fileSize: @escaping @Sendable (URL) -> Int64?
+    ) {
+        self.segmentDirectory = segmentDirectory
+        self.index = index
+        self.ledger = ledger
+        self.exporter = exporter
+        self.availableCapacity = availableCapacity
+        self.fileSize = fileSize
+    }
+
+    // MARK: - Launch reconciliation (decision 4)
+
+    private struct DayGroup: Hashable {
+        let deckID: String
+        let day: Date
+    }
+
+    func load() async {
+        guard !isLoaded, !isLoading, activeSessionID == nil else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        // 1. Nothing can be exporting at launch.
+        await exporter.purgeStaleExports()
+
+        // 2. Load the index.
+        var records: [SessionRecord] = []
+        var changed = false
+        var skipReconciliation = false
+        do {
+            records = try await index.load()
+        } catch is DecodingError {
+            // Move the unreadable file aside, never overwrite or delete it. If even that
+            // fails the file is still in the way: treat it like an I/O error.
+            do {
+                _ = try await index.quarantineUnreadable(now: Date())
+                changed = true
+            } catch {
+                savesSuspended = true
+                skipReconciliation = true
+            }
+        } catch {
+            savesSuspended = true
+            skipReconciliation = true
+        }
+
+        if !skipReconciliation {
+            // 3. An app kill mid-session: the record is finished now.
+            for i in records.indices where !records[i].isFinished {
+                records[i].isFinished = true
+                changed = true
+            }
+
+            // 4. Undecided segments: bytes on disk stay recovered, no bytes -> unkept failure.
+            var emptyIDs: [UUID] = []
+            for i in records.indices {
+                for c in records[i].clips.indices {
+                    for s in records[i].clips[c].segments.indices {
+                        let segment = records[i].clips[c].segments[s]
+                        guard segment.outcome == nil else { continue }
+                        let url = SegmentFiles.url(for: segment.id, in: segmentDirectory)
+                        if (fileSize(url) ?? 0) > 0 { continue }
+                        records[i].clips[c].segments[s].outcome = .failed(kept: false)
+                        emptyIDs.append(segment.id)
+                        changed = true
+                    }
+                }
+            }
+            for id in emptyIDs {
+                try? await ledger.markFinished(id)
+            }
+
+            // 5. Ledger entries no record mentions.
+            var knownIDs: Set<UUID> = []
+            for record in records {
+                for clip in record.clips {
+                    for segment in clip.segments { knownIDs.insert(segment.id) }
+                }
+            }
+            if let entries = try? await ledger.allEntries() {
+                let synthesized = synthesizeRecords(from: entries, excluding: knownIDs)
+                if !synthesized.isEmpty {
+                    records.append(contentsOf: synthesized)
+                    changed = true
+                }
+            }
+        }
+
+        // 6. Assign in one synchronous step after the last await.
+        records.sort { $0.startedAt > $1.startedAt }
+        sessions = records
+        if changed { enqueueSave() }
+        refreshStorage()
+        isLoaded = true
+    }
+
+    private func synthesizeRecords(from entries: [SegmentLedgerEntry], excluding knownIDs: Set<UUID>) -> [SessionRecord] {
+        let calendar = Calendar.current
+        var groups: [DayGroup: [(entry: SegmentLedgerEntry, deck: Deck)]] = [:]
+        for entry in entries where !knownIDs.contains(entry.segmentID) {
+            let url = SegmentFiles.url(for: entry.segmentID, in: segmentDirectory)
+            guard (fileSize(url) ?? 0) > 0 else { continue }
+            guard let deck = Deck.v1Decks.first(where: { deck in
+                deck.questions.contains { $0.id == entry.questionID }
+            }) else { continue }
+            let key = DayGroup(deckID: deck.id, day: calendar.startOfDay(for: entry.startedAt))
+            groups[key, default: []].append((entry, deck))
+        }
+
+        var result: [SessionRecord] = []
+        for (_, members) in groups {
+            let sorted = members.sorted { $0.entry.startedAt < $1.entry.startedAt }
+            guard let first = sorted.first else { continue }
+            var questionOrder: [String] = []
+            var segmentsByQuestion: [String: [Segment]] = [:]
+            for member in sorted {
+                let entry = member.entry
+                let outcome: SegmentOutcome? = entry.status == .finished ? .failed(kept: true) : nil
+                let segment = Segment(
+                    id: entry.segmentID,
+                    questionID: entry.questionID,
+                    startedAt: entry.startedAt,
+                    endReason: nil,
+                    outcome: outcome
+                )
+                if segmentsByQuestion[entry.questionID] == nil {
+                    questionOrder.append(entry.questionID)
+                }
+                segmentsByQuestion[entry.questionID, default: []].append(segment)
+            }
+            var clips: [Clip] = []
+            for questionID in questionOrder {
+                clips.append(Clip(questionID: questionID, segments: segmentsByQuestion[questionID] ?? []))
+            }
+            result.append(SessionRecord(
+                id: UUID(),
+                deckID: first.deck.id,
+                deckTitle: first.deck.title,
+                startedAt: first.entry.startedAt,
+                clips: clips,
+                isFinished: true
+            ))
+        }
+        return result
+    }
+
+    // MARK: - Checkpoint / finish (decision 3)
+
+    private static func isKeepWorthy(_ outcome: SegmentOutcome?) -> Bool {
+        switch outcome {
+        case .saved: return true
+        case let .failed(kept): return kept
+        case nil: return true
+        }
+    }
+
+    private static func isUnkeptFailure(_ outcome: SegmentOutcome?) -> Bool {
+        outcome == .failed(kept: false)
+    }
+
+    func checkpoint(sessionID: UUID, deck: Deck, startedAt: Date, clips: [Clip]) {
+        guard isLoaded, !clips.isEmpty, !closedSessionIDs.contains(sessionID) else { return }
+        if let i = sessions.firstIndex(where: { $0.id == sessionID }) {
+            sessions[i].clips = clips      // keeps its isFinished
+        } else {
+            insert(SessionRecord(
+                id: sessionID,
+                deckID: deck.id,
+                deckTitle: deck.title,
+                startedAt: startedAt,
+                clips: clips,
+                isFinished: false
+            ))
+        }
+        enqueueSave()
+        refreshStorage()
+    }
+
+    func finish(sessionID: UUID, deck: Deck, startedAt: Date, clips: [Clip]) async {
+        guard isLoaded else { return }
+        closedSessionIDs.insert(sessionID)
+
+        var segments: [Segment] = []
+        for clip in clips { segments.append(contentsOf: clip.segments) }
+
+        if segments.contains(where: { Self.isKeepWorthy($0.outcome) }) {
+            if let i = sessions.firstIndex(where: { $0.id == sessionID }) {
+                sessions[i].clips = clips
+                sessions[i].isFinished = true
+            } else {
+                insert(SessionRecord(
+                    id: sessionID,
+                    deckID: deck.id,
+                    deckTitle: deck.title,
+                    startedAt: startedAt,
+                    clips: clips,
+                    isFinished: true
+                ))
+            }
+            enqueueSave()
+            refreshStorage()
+            return
+        }
+
+        // Nothing worth keeping: no record, and the unusable files go. The reducer already
+        // judged these segments unusable.
+        sessions.removeAll { $0.id == sessionID }
+        enqueueSave()
+        var segmentIDs: Set<UUID> = []
+        for segment in segments {
+            segmentIDs.insert(segment.id)
+            if Self.isUnkeptFailure(segment.outcome) {
+                try? FileManager.default.removeItem(at: SegmentFiles.url(for: segment.id, in: segmentDirectory))
+            }
+        }
+        try? await ledger.remove(segmentIDs: segmentIDs)
+        refreshStorage()
+    }
+
+    private func insert(_ record: SessionRecord) {
+        sessions.append(record)
+        sessions.sort { $0.startedAt > $1.startedAt }
+    }
+
+    // MARK: - Recovered clips
+
+    private func locate(segmentID: UUID, in sessionID: UUID) -> (session: Int, clip: Int, segment: Int)? {
+        guard let i = sessions.firstIndex(where: { $0.id == sessionID }) else { return nil }
+        for c in sessions[i].clips.indices {
+            for s in sessions[i].clips[c].segments.indices
+            where sessions[i].clips[c].segments[s].id == segmentID {
+                return (i, c, s)
+            }
+        }
+        return nil
+    }
+
+    private func canDecide(_ clip: RecoveredClip) -> (session: Int, clip: Int, segment: Int)? {
+        guard isLoaded,
+              clip.sessionID != activeSessionID,
+              !deletingSessionIDs.contains(clip.sessionID),
+              let position = locate(segmentID: clip.segment.id, in: clip.sessionID),
+              sessions[position.session].clips[position.clip].segments[position.segment].outcome == nil
+        else { return nil }
+        return position
+    }
+
+    func keep(_ clip: RecoveredClip) async {
+        guard let position = canDecide(clip) else { return }
+        sessions[position.session].clips[position.clip].segments[position.segment].outcome = .failed(kept: true)
+        enqueueSave()
+        try? await ledger.markFinished(clip.segment.id)
+    }
+
+    func discard(_ clip: RecoveredClip) async {
+        guard let position = canDecide(clip) else { return }
+        let url = SegmentFiles.url(for: clip.segment.id, in: segmentDirectory)
+        try? FileManager.default.removeItem(at: url)
+        // A file that is still there must stay visible: abort rather than hide it.
+        guard fileSize(url) == nil else { return }
+        sessions[position.session].clips[position.clip].segments[position.segment].outcome = .failed(kept: false)
+        enqueueSave()
+        refreshStorage()
+        try? await ledger.remove(segmentIDs: [clip.segment.id])
+
+        guard let record = record(id: clip.sessionID) else { return }
+        var hasKeepWorthy = false
+        for recordClip in record.clips {
+            for segment in recordClip.segments where Self.isKeepWorthy(segment.outcome) {
+                hasKeepWorthy = true
+            }
+        }
+        if !hasKeepWorthy {
+            _ = await deleteUnchecked(sessionID: clip.sessionID)
+        }
+    }
+
+    // MARK: - Delete (decision 5)
+
+    func canDelete(_ sessionID: UUID) -> Bool {
+        isLoaded
+            && sessionID != activeSessionID
+            && !exportingSessionIDs.contains(sessionID)
+            && !deletingSessionIDs.contains(sessionID)
+    }
+
+    func canStartExport(_ sessionID: UUID) -> Bool {
+        isLoaded
+            && sessionID != activeSessionID
+            && !exportingSessionIDs.contains(sessionID)
+            && !deletingSessionIDs.contains(sessionID)
+    }
+
+    @discardableResult
+    func delete(sessionID: UUID) async -> Bool {
+        guard canDelete(sessionID) else { return false }
+        return await deleteUnchecked(sessionID: sessionID)
+    }
+
+    /// Files -> verify -> ledger -> index. If any file survives the removal attempts the
+    /// delete aborts before touching the ledger or the index.
+    private func deleteUnchecked(sessionID: UUID) async -> Bool {
+        guard let record = record(id: sessionID) else { return false }
+        deletingSessionIDs.insert(sessionID)
+        closedSessionIDs.insert(sessionID)
+
+        var segmentIDs: [UUID] = []
+        for clip in record.clips {
+            for segment in clip.segments { segmentIDs.append(segment.id) }
+        }
+        for id in segmentIDs {
+            try? FileManager.default.removeItem(at: SegmentFiles.url(for: id, in: segmentDirectory))
+        }
+        for id in segmentIDs where fileSize(SegmentFiles.url(for: id, in: segmentDirectory)) != nil {
+            deletingSessionIDs.remove(sessionID)
+            return false
+        }
+
+        try? await ledger.remove(segmentIDs: Set(segmentIDs))
+        sessions.removeAll { $0.id == sessionID }
+        enqueueSave()
+        refreshStorage()
+        deletingSessionIDs.remove(sessionID)
+        return true
+    }
+
+    // MARK: - Export flag
+
+    func beginExport(_ sessionID: UUID) {
+        guard canStartExport(sessionID) else { return }
+        exportingSessionIDs.insert(sessionID)
+    }
+
+    func endExport(_ sessionID: UUID) {
+        exportingSessionIDs.remove(sessionID)
+    }
+
+    // MARK: - Storage, lookup, saves
+
+    func refreshStorage() {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: segmentDirectory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        var used: Int64 = 0
+        for url in urls where url.pathExtension == "mov" {
+            used += fileSize(url) ?? 0
+        }
+        storage = StorageStatus(usedBytes: used, availableBytes: availableCapacity())
+    }
+
+    func record(id: UUID) -> SessionRecord? {
+        sessions.first { $0.id == id }
+    }
+
+    /// Serial and ordered: each save is chained after the previous one and writes the
+    /// snapshot taken when it was enqueued. A failed save is not retried; the next mutation
+    /// saves the whole array again. Nothing is saved while `savesSuspended`.
+    private func enqueueSave() {
+        guard !savesSuspended else { return }
+        let snapshot = sessions
+        let index = self.index
+        let previous = saveTask
+        saveTask = Task {
+            await previous?.value
+            try? await index.save(snapshot)
+        }
+    }
+
+    /// Test hook: resumes when every queued save has finished.
+    func waitForPendingSaves() async {
+        await saveTask?.value
+    }
+
+    #if DEBUG
+    /// Part B demo only: sets `sessions` directly and `isLoaded = true` (so `load()` no-ops). No save.
+    func seedForDemo(_ records: [SessionRecord]) {
+        sessions = records
+        isLoaded = true
+    }
+    #endif
+}
