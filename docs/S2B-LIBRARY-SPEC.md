@@ -39,37 +39,57 @@ already covers it).
    checkpoints arrive in order. A crash between capture start and the checkpoint leaves a
    ledger `.writing` entry with no index record — decision 4 recovers it.
 3. **A session with nothing worth keeping leaves no record.** Mirrors `exportManifest`'s
-   omitted-not-empty rule: a checkpoint with zero clips is ignored, and `finish` on a session
-   whose clips have no `.saved` / `.failed(kept: true)` segment **deletes** it (files, ledger,
-   record — decision 5's order). A late checkpoint for a finished or deleted session is ignored
-   (`closedSessionIDs`), because `endSession()` can return while a `.persistLedger` effect is
-   still queued.
-4. **Launch reconciliation (`Library.load()`), exactly these rules, in this order:**
+   omitted-not-empty rule. A segment is **keep-worthy** if its outcome is `.saved`,
+   `.failed(kept: true)` or `nil` (undecided — never deleted without the user). A checkpoint with
+   zero clips is ignored. `finish` on a session with no keep-worthy segment leaves no record:
+   it removes only the files of its `.failed(kept: false)` segments and their ledger entries.
+   Deleting those without a prompt is intended — the reducer already judged them unusable and
+   `exportManifest` already excludes them. A late checkpoint for a finished or deleted session
+   is ignored (`closedSessionIDs`), because `endSession()` can return while a `.persistLedger`
+   effect is still queued.
+4. **Launch reconciliation (`Library.load()`).** It returns immediately if `isLoaded` is
+   already true or `activeSessionID != nil`. It works on **local copies** and assigns `sessions`
+   in one synchronous step after its last await, so nothing the user does can be overwritten —
+   and nothing can be done meanwhile: until `isLoaded`, every mutating `Library` method is a
+   no-op (`delete` returns false), the deck picker's Recordings button is disabled, and the
+   consent button is disabled. Exactly these rules, in this order:
    1. `await exporter.purgeStaleExports()` (S3 hand-off; nothing can be exporting at launch).
-   2. Load the index. If the file exists but won't decode, **move it aside** to
-      `session-index.unreadable-<yyyyMMdd-HHmmss>.json` in the same directory (never overwrite or
-      delete it) and continue with `[]`; step 5 rebuilds what it can from the ledger.
+   2. Load the index. If it fails with a `DecodingError`, **move the file aside** to
+      `session-index.unreadable-<yyyyMMdd-HHmmss>-<first 8 of a UUID>.json` in the same directory
+      (never overwrite or delete it) and continue with `[]`; step 5 rebuilds what it can from the
+      ledger. If it fails with any other error (I/O), leave the file alone, set the private
+      `savesSuspended = true` (no index save happens for the rest of this launch, so a good index
+      is never clobbered), skip steps 3–5 and finish at step 6 with `[]`.
    3. Every record with `isFinished == false` (an app kill mid-session) → `isFinished = true`.
    4. Every segment with `outcome == nil` in a record: if its file has size > 0 it stays `nil` —
       that is a **recovered clip**, shown for the user to keep or delete. If the file is missing
       or empty → `outcome = .failed(kept: false)` and `ledger.markFinished(id)`.
    5. **Ledger entries no record mentions** (a crash before the first checkpoint, or an index
-      lost in step 2): take only entries whose file has size > 0 and whose `questionID` belongs
-      to a v1 deck. Group them by (deck, calendar day of `startedAt` in `Calendar.current`) into
+      lost in step 2). If `ledger.allEntries()` throws, skip this step. Otherwise take only
+      entries whose file has size > 0 and whose `questionID` belongs to a v1 deck. Group them by (deck, calendar day of `startedAt` in `Calendar.current`) into
       one synthesized record per group: `id` new, `deckTitle` from the deck, `startedAt` = the
       earliest entry, clips grouped by `questionID` ordered by each clip's first `startedAt`,
-      segments ordered by `startedAt`, `endReason nil`, outcome `.saved(url: SegmentFiles.url…)`
-      for `.finished` entries and `nil` (recovered) for `.writing` / `.orphaned`,
-      `isFinished = true`. Entries with no file or no matching deck are left untouched.
-   6. Sort newest `startedAt` first; save if anything changed; `refreshStorage()`;
-      `isLoaded = true`.
+      segments ordered by `startedAt`, `endReason nil`, outcome **`.failed(kept: true)`** for
+      `.finished` entries (the ledger doesn't store outcomes, and a `.finished` entry may have
+      been an unkept failure — so it exports flagged "may be incomplete", never silently as
+      clean) and `nil` (recovered) for `.writing` / `.orphaned`, `isFinished = true`. Entries with
+      no file or no matching deck are left untouched.
+   6. Sort newest `startedAt` first; assign `sessions`; save if anything changed;
+      `refreshStorage()`; `isLoaded = true`.
 
-   `load()` is idempotent. The UI calls it once at launch. The consent button stays disabled
-   until `isLoaded`, so no session starts during reconciliation.
-5. **Delete order: files → ledger → index.** A crash mid-delete leaves at worst a record whose
-   files are gone (the planner drops them as `.missingFile`, and the user can delete again) —
-   never invisible files eating space that nothing points to. **Refused** for the active
-   session and for a session with an export in flight. Every delete in the UI goes through a
+   The UI calls `load()` once at launch. **Accepted gaps (IDEAS, not this step):** a `.mov` in
+   the segment directory with neither a ledger entry nor a record (the `try? ledger.record` in
+   `.startSegment` failed) stays invisible but is counted in `usedBytes`; a `.saved` segment
+   whose ledger entry is still `.writing` (crash between the reducer and `.persistLedger`) is
+   left as is. `SessionStore.recoverOrphans()` / `recoveredSegments` stay in place, unused by
+   the UI, with their S1 tests.
+5. **Delete order: files → verify → ledger → index.** A crash mid-delete leaves at worst a
+   record whose files are gone (the planner drops them as `.missingFile`, and the user can
+   delete again) — never invisible files eating space that nothing points to. If any file
+   still exists after the removal attempts (`fileSize` non-nil), the delete **aborts** before
+   touching the ledger or the index and returns false. **Refused** for the active session and
+   for a session with an export in flight; while a delete runs, the session is in
+   `deletingSessionIDs` and no export can start on it. Every delete in the UI goes through a
    confirmation dialog. This is the first code that deletes a segment, so S3's "your recordings
    are safe" copy now depends on this rule: **the export path still never deletes**; only
    `Library.delete` and `Library.discard` do.
@@ -79,7 +99,7 @@ already covers it).
    `completionWithItemsHandler` is the only dismissal hook, and it calls
    `exporter.discard(result)` so the temp directory goes as soon as the sheet closes (Save to
    Files is in that sheet). Photos exports discard themselves (S3).
-8. **Low space = under 1 GB available** (`Library.lowSpaceThreshold = 1_000_000_000`), read
+8. **Low space = under 1 GB available** (`StorageStatus.lowSpaceThreshold = 1_000_000_000`), read
    through an injected `availableCapacity` closure (the `Exporter` pattern). It shows a banner on
    the deck picker and a line on the consent card. **It does not block recording** — a 10-minute
    answer is well under a gigabyte, and refusing to record is worse than warning.
@@ -135,9 +155,10 @@ AVFoundation, UIKit or SwiftUI.
 
 ```swift
 struct StorageStatus: Equatable, Sendable {
+    static let lowSpaceThreshold: Int64 = 1_000_000_000   // on the struct, not the @MainActor class
     let usedBytes: Int64            // sum of *.mov sizes in the segment directory
     let availableBytes: Int64?      // nil when the volume won't say
-    var isLow: Bool { availableBytes.map { $0 < Library.lowSpaceThreshold } ?? false }
+    var isLow: Bool { availableBytes.map { $0 < Self.lowSpaceThreshold } ?? false }
 }
 
 struct RecoveredClip: Equatable, Identifiable, Sendable {
@@ -148,8 +169,6 @@ struct RecoveredClip: Equatable, Identifiable, Sendable {
 
 @MainActor @Observable
 final class Library {
-    static let lowSpaceThreshold: Int64 = 1_000_000_000
-
     private(set) var sessions: [SessionRecord] = []      // newest startedAt first
     private(set) var storage = StorageStatus(usedBytes: 0, availableBytes: nil)
     private(set) var isLoaded = false
@@ -163,38 +182,51 @@ final class Library {
 
     func load() async                                    // decision 4
     func checkpoint(sessionID: UUID, deck: Deck, startedAt: Date, clips: [Clip])
-    func finish(sessionID: UUID, clips: [Clip]) async   // decision 3
+    func finish(sessionID: UUID, deck: Deck, startedAt: Date, clips: [Clip]) async   // decision 3
     func keep(_ clip: RecoveredClip) async               // outcome .failed(kept: true); ledger.markFinished
     func discard(_ clip: RecoveredClip) async            // delete file; outcome .failed(kept: false); ledger.remove
-    func canDelete(_ sessionID: UUID) -> Bool           // not active, not exporting
+    func canDelete(_ sessionID: UUID) -> Bool           // loaded, not active, not exporting, not deleting
+    func canStartExport(_ sessionID: UUID) -> Bool      // loaded, not active, not exporting, not deleting
     @discardableResult func delete(sessionID: UUID) async -> Bool   // decision 5
-    func beginExport(_ sessionID: UUID)
+    func beginExport(_ sessionID: UUID)                  // no-op unless canStartExport
     func endExport(_ sessionID: UUID)
     func refreshStorage()
     func record(id: UUID) -> SessionRecord?
     /// Test hook: resumes when every queued save has finished.
     func waitForPendingSaves() async
+    #if DEBUG
+    /// Part B demo only: sets `sessions` directly and `isLoaded = true` (so `load()` no-ops). No save.
+    func seedForDemo(_ records: [SessionRecord])
+    #endif
 }
 ```
+
+Private state: `closedSessionIDs: Set<UUID>`, `deletingSessionIDs: Set<UUID>`,
+`savesSuspended: Bool`, `saveTask: Task<Void, Never>?`, and `deleteUnchecked(sessionID:) async ->
+Bool` (decision 5's steps without the `canDelete` check; `delete` calls it after the check).
 
 Rules:
 - **Saves are serial and ordered.** Every mutation updates `sessions` synchronously on the main
   actor, then enqueues `index.save(snapshot)` with the snapshot taken at that moment, chained
   after the previous save (`let previous = saveTask; saveTask = Task { await previous?.value;
   try? await index.save(snapshot) }`). A failed save is not retried (the next mutation saves the
-  whole array again).
-- `checkpoint`: ignored if `clips` is empty or the ID is in `closedSessionIDs` (private
-  `Set<UUID>`). Otherwise insert `SessionRecord(id:deckID:deckTitle:startedAt:clips:
-  isFinished: false)` or replace an existing record's `clips` **keeping its `isFinished`**.
-- `finish`: insert the ID into `closedSessionIDs` first. If `clips` has no `.saved` or
-  `.failed(kept: true)` segment → `delete(sessionID:)` (bypassing the active check — the caller
-  has already cleared it) and also remove the files of any listed segments. Otherwise set
-  `clips` and `isFinished = true` (inserting the record if no checkpoint ever landed).
-- `discard`: after it, if the record has no `.saved`, `.failed(kept: true)` or `nil` segment
-  left → `delete(sessionID:)`.
-- `delete`: refuses (false, no change) when `canDelete` is false. Otherwise remove every
-  segment file (`try?` each), then `ledger.remove(segmentIDs:)` (`try?`), then drop the record,
-  save, `refreshStorage()`, true.
+  whole array again). Nothing is saved while `savesSuspended`.
+- `checkpoint`: ignored if `clips` is empty or the ID is in `closedSessionIDs`. Otherwise insert
+  `SessionRecord(id:deckID:deckTitle:startedAt:clips:isFinished: false)` or replace an existing
+  record's `clips` **keeping its `isFinished`**.
+- `finish`: inserts the ID into `closedSessionIDs` before its first await. If `clips` has a
+  keep-worthy segment (decision 3) → set `clips` and `isFinished = true`, inserting the record
+  (from `deck` / `startedAt`) if no checkpoint ever landed. Otherwise → remove the record if
+  present, `try?`-remove the files of the `.failed(kept: false)` segments, and
+  `ledger.remove(segmentIDs:)` for every listed segment.
+- `keep` / `discard`: no-op unless the session isn't active and the segment's outcome is
+  **still `nil` at call time** (re-read from `sessions`). `discard`: after it, if the record has no
+  keep-worthy segment left → `deleteUnchecked(sessionID:)`.
+- `delete`: refuses (false, no change) when `canDelete` is false. `deleteUnchecked`: insert into
+  `deletingSessionIDs`; `try?`-remove every segment file; if any `fileSize(url)` is still
+  non-nil → remove from `deletingSessionIDs`, return false; else `ledger.remove(segmentIDs:)`
+  (`try?`), drop the record from `sessions`, save, `refreshStorage()`, remove from
+  `deletingSessionIDs`, true.
 - `refreshStorage`: list the segment directory (missing → used 0); sum sizes of `.mov` files via
   `fileSize`; `availableBytes = availableCapacity()`.
 - Production closures (built in `AppModel.production()`): `availableCapacity` reads
@@ -229,13 +261,16 @@ static let attributesFileSize: @Sendable (URL) -> Int64?   // attributesOfItem s
   important-usage capacity>, fileSize: attributesFileSize)`. Constructing these touches no camera
   (nil-safety rule holds); S2a's `testInitConstructsNoCapture` must still pass.
 - `beginSession(deck:)`: makes `id = UUID()`, `startedAt = Date()`, passes
-  `archive: { [weak library] clips in library?.checkpoint(sessionID: id, deck: deck,
-  startedAt: startedAt, clips: clips) }` to the store, sets `library.activeSessionID = id`.
-  Everything else unchanged.
+  `archive: { [weak library = self.library] clips in library?.checkpoint(sessionID: id,
+  deck: deck, startedAt: startedAt, clips: clips) }` to the store, sets
+  `library.activeSessionID = id`. Everything else unchanged.
 - `endSession()`: the refusal checks, `store.stop()` and `active = nil` stay synchronous before
-  the first await (S2a rule). Capture `id` and `store.state.clips` into locals first, also set
-  `library.activeSessionID = nil` before the first await, then `await library.finish(sessionID:
-  clips:)`, then `await capture.shutdown()`.
+  the first await (S2a rule). Capture `id`, `deck`, `startedAt` and `store.state.clips` into
+  locals first and set `library.activeSessionID = nil`, all before the first await; then
+  `await capture.shutdown()` (release the camera first), then `await library.finish(...)`. The
+  local clips are final: `endSession` only proceeds from `.idle`/`.paused`, which the reducer
+  reaches only after `fileOutputFinished` has set the outcome; a still-queued `.persistLedger`
+  only writes the ledger.
 
 ## 5. `ExportModel` — `StoryCue/ExportModel.swift`
 
@@ -254,7 +289,7 @@ final class ExportModel {
     let sessionID: UUID
 
     init(sessionID: UUID, library: Library, exporter: Exporter)
-    var canExport: Bool                     // record exists, deck resolves, manifest non-empty, not already exporting
+    var canExport: Bool                     // record exists, deck resolves, manifest non-empty, library.canStartExport
     func start(_ destination: ExportDestination)   // no-op unless canExport and phase is .choosing/.finished/.failed
     func cancel()                           // cancels the running task
     func shareDismissed() async             // exporter.discard(result); phase .finished(summary)
@@ -263,8 +298,9 @@ final class ExportModel {
 
 - `start`: `library.beginExport(sessionID)`, phase `.running(0, 0)`, then one stored `Task` that
   calls `exporter.export(entries: record.manifest, deck:, sessionDate: record.startedAt, unit:,
-  destination:, progress:)`. The progress closure hops to the main actor and only ever
-  **increases** `done` (hops can reorder). Outcomes: `.files` success → `.sharing(result)`;
+  destination:, progress:)`. The progress closure hops to the main actor and applies **only
+  `if case .running = phase`**, keeping the max `done` seen (hops can reorder, and a late hop
+  must not drag `.sharing`/`.finished` back to `.running`). Outcomes: `.files` success → `.sharing(result)`;
   `.photos` success → `.finished(summary)`; any thrown `ExportFailure` → `.failed(userMessage)`
   (cancellation arrives as `.cancelled`, whose message already says "Your recordings are
   unchanged."). `library.endExport` on every exit **except** `.sharing`, where `shareDismissed`
@@ -279,9 +315,13 @@ All text through `UICopy`, Dynamic Type text styles only, every button labelled 
 text, 44 pt minimum targets — the S2a rules.
 
 - **`StoryCueApp`**: `.task { await model.library.load() }` on the root view.
-- **`DeckPickerView`**: a trailing toolbar button `UICopy.libraryButton` that pushes
+- **`DeckPickerView`**: a trailing toolbar button `UICopy.libraryButton`
+  (`.accessibilityIdentifier("libraryButton")`, disabled until `library.isLoaded`) that pushes
   `LibraryView(model:)`; when `library.storage.isLow`, a first `Section` holding
   `StorageBanner`.
+- **Question labels everywhere in S2b**: `i = deck.questions.firstIndex { $0.id == questionID }`
+  → `UICopy.questionCounter(i, deck.questions.count)` plus the question text; if the deck or
+  question isn't found → `UICopy.unknownQuestion` and no text (never a raw ID).
 - **`ConsentView`**: the confirm button is also disabled while `!model.library.isLoaded`; when
   `storage.isLow`, `UICopy.lowSpaceConsentNote` in `.footnote` under the privacy note.
 - **`StorageBanner`** (`StorageBanner.swift`): `UICopy.lowSpaceBanner(available)` with a warning
@@ -294,8 +334,10 @@ text, 44 pt minimum targets — the S2a rules.
     destructive `UICopy.deleteClip`).
   - A sessions section: one row per session — deck title (`.title2`), date + time
     (`.abbreviated` date, `.shortened` time), `UICopy.clipCount(record.manifest.count)`. Tapping
-    pushes `SessionDetailView`. Swipe-to-delete only when `canDelete`, through the same kind of
-    dialog (`UICopy.deleteSessionConfirm`, destructive `UICopy.deleteSession`).
+    pushes `SessionDetailView`. Delete by `.swipeActions(allowsFullSwipe: false)` with a
+    `Button(role: .destructive)` (only when `canDelete`) that only sets `@State pendingDelete`;
+    the `confirmationDialog` (`UICopy.deleteSessionConfirm`, destructive `UICopy.deleteSession`)
+    is driven by that state. No `.onDelete` (a full swipe would skip the dialog).
   - Empty state (no sessions, no recovered): `ContentUnavailableView` with
     `UICopy.libraryEmptyTitle` / `UICopy.libraryEmptyBody`.
   - Footer: `UICopy.storageFooter(used:available:)`.
@@ -304,10 +346,13 @@ text, 44 pt minimum targets — the S2a rules.
   out from under it → shows `UICopy.sessionGone` and nothing else). One row per clip, in order:
   `UICopy.questionCounter` + the question text (`.body`), a `UICopy.mayBeIncomplete` caption when
   any segment is `.failed(kept: true)`, and `UICopy.recoveredUndecided` with Keep/Delete for a
-  `nil` segment. Clips with only `.failed(kept: false)` segments are not shown. Toolbar:
-  `UICopy.export` (disabled unless `ExportModel.canExport`) presenting `ExportView` as a sheet. A
-  destructive `UICopy.deleteSession` button at the bottom (disabled unless `canDelete`, dialog
-  first); after a successful delete, `dismiss()`.
+  `nil` segment — **hidden when `sessionID == library.activeSessionID`** (that `nil` is a live
+  recording). Clips with only `.failed(kept: false)` segments are not shown. The view owns
+  `@State private var exportModel: ExportModel?`; toolbar `UICopy.export` (disabled unless a
+  fresh `ExportModel(...).canExport`) sets it, and `.sheet(isPresented:)` bound to
+  `exportModel != nil` presents `ExportView(model:)`, clearing it on dismiss. A destructive
+  `UICopy.deleteSession` button at the bottom (disabled unless `canDelete`, dialog first);
+  after a successful delete, `dismiss()`.
 - **`ExportView(model: ExportModel)`** (sheet, `NavigationStack` with title `UICopy.exportTitle`):
   - `.choosing`: a `Picker` (`.segmented`) bound to `unit`: `UICopy.exportEachAnswer` (`.perClip`)
     / `UICopy.exportOneVideo` (`.wholeSession`); buttons `UICopy.exportToFiles` (`.files`) and
@@ -317,7 +362,10 @@ text, 44 pt minimum targets — the S2a rules.
   - `.sharing`: `.sheet` presenting `ShareSheet(items: result.files) { Task { await
     model.shareDismissed() } }`.
   - `.finished` / `.failed`: the message, button `UICopy.done` → `dismiss()`.
-  - `.interactiveDismissDisabled(phase is .running)`; `.onDisappear`: running → `cancel()`.
+  - `.interactiveDismissDisabled(phase is .running)`; `.onDisappear`: `.running` → `cancel()`;
+    `.sharing` → `Task { await model.shareDismissed() }` (so the temp directory and the
+    exporting flag never outlive the sheet). `shareDismissed` is a no-op unless phase is
+    `.sharing`, so the share sheet's own callback and this one can't double-discard.
 - **`ShareSheet`** (`ShareSheet.swift`): `UIViewControllerRepresentable` wrapping
   `UIActivityViewController(activityItems: items, applicationActivities: nil)`;
   `completionWithItemsHandler` calls `onComplete` exactly once (completed or cancelled).
@@ -326,6 +374,8 @@ text, 44 pt minimum targets — the S2a rules.
 
 | Key | Text |
 |---|---|
+| `fileSize(_ bytes: Int64) -> String` | `ByteCountFormatter`, `.file` count style (helper used by the two below) |
+| `unknownQuestion` | "A question" |
 | `libraryButton` / `libraryTitle` | "Recordings" / "Recordings" |
 | `libraryEmptyTitle` / `libraryEmptyBody` | "No recordings yet" / "Choose a deck to record your first conversation." |
 | `clipCount(_ n: Int)` | n == 1 ? "1 answer" : "\(n) answers" |
@@ -367,9 +417,12 @@ name matches `session-index.unreadable-*.json`, original gone, contents identica
 `ExportManifestClipsTests.swift`: `testManifestForClipsMatchesState` (same result through both
 overloads for a state with saved, kept-failed, unkept-failed and nil segments).
 
-`SessionStoreTests.swift` (add): `testArchiveCalledAfterCaptureStart` (after `.tapRecord` +
-drain, the archive received clips containing the new segment, and the mock's start count is 1
-before the first archive call — record order with a shared array), `testArchiveCalledOnPersistLedger`
+`SessionStoreTests.swift` (add): `testArchiveCalledAfterCaptureStart` — a test-local
+`OrderProbe` (`@MainActor final class` holding `var log: [String]`) and a test-local
+`CaptureService` wrapper around `MockCaptureService` whose `startSegment` forwards and then
+appends `"start"` via `await MainActor.run`; the `archive` closure appends `"archive"`. After
+`.tapRecord` + drain: `log == ["start", "archive"]` and the archived clips contain the new
+segment. `testArchiveCalledOnPersistLedger`
 (after a simulated finish, the last archive call's segment has a non-nil outcome),
 `testNoArchiveClosureIsFine`.
 
@@ -382,19 +435,25 @@ before the first archive call — record order with a shared array), `testArchiv
 | `testCheckpointKeepsFinishedFlag` | an unfinished record on disk, `load()` finishes it, then `checkpoint` for that ID (not closed) → clips replaced, `isFinished` still true |
 | `testCheckpointAfterFinishIgnored` | finish(id), then checkpoint(id) → record unchanged (still finished) |
 | `testFinishMarksFinished` | `isFinished == true`, clips replaced |
-| `testFinishWithNothingKeptDeletesSession` | only `.failed(kept: false)` segments → no record, their files gone, ledger entries gone |
+| `testFinishWithNothingKeepWorthyLeavesNoRecord` | only `.failed(kept: false)` segments → no record, their files gone, ledger entries gone |
+| `testFinishKeepsNilSegmentWithBytes` | one `nil`-outcome segment with a file → record kept, file still there |
 | `testLoadFinalizesInterruptedSession` | an unfinished record on disk → finished after `load()` |
 | `testLoadKeepsNilOutcomeWithFileAsRecovered` | appears in `recovered` |
 | `testLoadMarksNilOutcomeWithoutFileFailed` | outcome `.failed(kept: false)`, ledger entry `.finished`, not in `recovered` |
-| `testLoadSynthesizesRecordFromUnindexedLedgerEntries` | two entries, same deck, same day, different questions → one record, two clips in `startedAt` order, `.writing` one recovered |
+| `testLoadSynthesizesRecordFromUnindexedLedgerEntries` | two entries (fixed **noon** timestamps on one day, so no midnight flake), same deck, different questions → one record, two clips in `startedAt` order; the `.finished` one is `.failed(kept: true)`, the `.writing` one recovered |
 | `testLoadSkipsUnindexedEntryWithoutFileOrDeck` | missing file → no record; unknown questionID → no record |
 | `testLoadQuarantinesUnreadableIndex` | garbage index → moved aside, library rebuilt from ledger |
 | `testLoadPurgesStaleExports` | a dir under `<tempRoot>/Exports/` is gone |
 | `testLoadIsIdempotent` | second `load()` → identical `sessions` |
+| `testLoadNoOpWhileSessionActive` | `activeSessionID` set before `load()` → `isLoaded` false, unfinished record untouched |
+| `testLoadReadErrorSuspendsSaves` | `session-index.json` is a directory (read fails, not a decode error) → not moved, `sessions` empty, a later `checkpoint` writes nothing to disk |
+| `testMutationsIgnoredBeforeLoad` | before `load()`: `delete` false, `checkpoint` adds nothing |
 | `testKeepFlagsClip` | outcome `.failed(kept: true)`, ledger `.finished`, gone from `recovered`, present in `manifest` |
 | `testDiscardRemovesFileAndLedgerEntry` | file gone, ledger entry gone, outcome `.failed(kept: false)` |
 | `testDiscardLastClipDeletesSession` | the record is gone |
 | `testDeleteRemovesFilesLedgerAndRecord` | all three gone; `true` |
+| `testDeleteAbortsWhenFileRemains` | a `fileSize` stub that keeps reporting one segment → `false`, ledger entries and record intact, not in `deletingSessionIDs` |
+| `testKeepRefusedForActiveSession` | `activeSessionID` = that session → outcome still `nil` |
 | `testDeleteRefusedForActiveSession` | `false`, nothing changed |
 | `testDeleteRefusedWhileExporting` | `beginExport` → `false`; `endExport` → `true` |
 | `testStorageLowBelowThreshold` | capacity 999_999_999 → `isLow`; 1_000_000_000 → not; nil → not |
@@ -430,39 +489,53 @@ iPhone app needs **either** a 6.9" set **or** a 6.5" set, and App Store Connect 
 you give to the other. STRATEGY's "6.9" and 6.5"" pair is out of date. **One 6.9" set**:
 iPhone 17 Pro Max simulator, portrait 1320 × 2868.
 
-- **Demo launch mode (DEBUG only, `#if DEBUG` in `StoryCueApp`)**: launch argument
-  `-StoryCueDemo` → `AppModel.demo()`: a temp segment directory, `MockCaptureService` (authorized,
-  ready), and a `Library` pre-seeded with two finished records (`grandparents`, three saved
-  clips; `holiday-table`, five) whose segment files are a few junk bytes (export isn't
-  exercised). Release builds contain none of it: every demo path sits inside `#if DEBUG`, the
-  existing Release compile proves it builds without them, and the Done-when grep checks the
-  guard.
+- **Demo launch mode (DEBUG only)**: launch argument `-StoryCueDemo` → `AppModel.demo()`
+  (inside `#if DEBUG` in `AppModel.swift`; `StoryCueApp` picks it under `#if DEBUG`): a temp
+  segment directory, `MockCaptureService` (authorized, ready), and `library.seedForDemo([...])`
+  with two finished records (`grandparents`, three `.saved` clips; `holiday-table`, five) whose
+  segment files are a few junk bytes written first (export isn't exercised). `seedForDemo` sets
+  `isLoaded`, so the root `.task`'s `load()` is a no-op and the seed is never re-read from disk.
+  Every demo path — `AppModel.demo()`, the `StoryCueApp` branch, the `RecorderView` preview swap
+  below — sits inside `#if DEBUG`.
 - **Open item for Perry (default chosen, swap before S6 if you want):** the simulator has no
   camera, so the recorder screenshot's preview area is black. **Default:** in demo mode only,
-  `CameraPreview` is replaced by a soft dark warm gradient (no stock photo, no fake person).
-  Alternative: a real device screenshot of the recorder, taken by Perry at S5 and uploaded
-  by hand in place of this one.
-- **Target `StoryCueUITests`** (`bundle.ui-testing`, `TEST_TARGET_NAME: StoryCue`), in its own
-  scheme **`StoryCueScreenshots`** — not in the `StoryCue` scheme, so the baseline and Duo lanes
-  don't start running UI tests.
+  `RecorderView` shows a soft dark warm `LinearGradient` instead of `CameraPreview` (no stock
+  photo, no fake person); `AppModel` exposes `#if DEBUG var isDemo: Bool`. Alternative: a real
+  device screenshot of the recorder, taken by Perry at S5 and uploaded by hand in place of
+  this one.
+- **Target `StoryCueUITests`** (`bundle.ui-testing`, `TEST_TARGET_NAME: StoryCue`,
+  `PRODUCT_BUNDLE_IDENTIFIER: dev.pmartin1915.storycue.uitests`), in its own scheme
+  **`StoryCueScreenshots`** (build StoryCue + StoryCueUITests, test StoryCueUITests) — not in
+  the `StoryCue` scheme, so the baseline and Duo lanes don't start running UI tests.
 - **`ScreenshotTests.swift`**: `testCaptureAppStoreScreenshots` launches with `-StoryCueDemo` and
-  attaches (`XCTAttachment`, `.keepAlways`, names fixed) five screenshots:
-  `01-decks` (deck picker), `02-consent` (Grandparents consent card), `03-recorder` (after "We're
-  ready", idle on question 1), `04-library` (Recordings), `05-session` (the Grandparents detail).
-  Each step waits on an element by accessibility label with `waitForExistence(timeout: 10)` and
-  fails with the screen name if it's missing.
-- **CI (`build.yml`, new job `screenshots`, after the baseline job, push-to-main and
-  `workflow_dispatch` only)**: boot "iPhone 17 Pro Max" (fail with the `simctl list devices`
-  output if absent), `xcrun simctl status_bar booted override --time "9:41" --batteryState
-  charged --batteryLevel 100 --cellularBars 4 --wifiBars 3`, run `xcodebuild test -scheme
-  StoryCueScreenshots -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -resultBundlePath
-  $RUNNER_TEMP/shots.xcresult`, export attachments with `xcrun xcresulttool export attachments
-  --path … --output-path $RUNNER_TEMP/shots`, assert five PNGs at 1320 × 2868 (`sips -g
-  pixelWidth -g pixelHeight`), upload as artifact `asc-screenshots-6.9`. Same Xcode selection
-  (`select-xcode.sh`) as the baseline job.
-- **Part B tests**: `testCaptureAppStoreScreenshots` only. **Done when** the artifact holds five
-  1320 × 2868 PNGs and `grep -n "StoryCueDemo" StoryCue/StoryCueApp.swift` shows every use inside
-  `#if DEBUG`.
+  attaches (`XCTAttachment(screenshot:)`, `.keepAlways`, `name` fixed) five screenshots:
+  `01-decks` (deck picker), `02-consent` (Grandparents consent card), `03-recorder` (after
+  "We're ready", idle on question 1), `04-library` (Recordings, reached through the
+  `libraryButton` accessibility identifier), `05-session` (the Grandparents detail). Each step
+  waits on an element with `waitForExistence(timeout: 10)` and fails naming the screen.
+- **CI: new workflow `.github/workflows/screenshots.yml`, `workflow_dispatch` only.**
+  `build.yml` is PR-only by design and stays untouched; screenshots are needed once before S6
+  and on demand after copy changes. One job on the same runner label as build.yml, with its own
+  checkout, `select-xcode.sh` release Xcode, XcodeGen 2.46.0 install and `xcodegen generate`.
+  Steps:
+  1. Boot "iPhone 17 Pro Max" (fail printing `xcrun simctl list devices` if absent).
+  2. `xcrun simctl status_bar booted override --time "9:41" --batteryState charged
+     --batteryLevel 100 --cellularBars 4 --wifiBars 3`.
+  3. `xcodebuild test -project StoryCue.xcodeproj -scheme StoryCueScreenshots -destination
+     'platform=iOS Simulator,name=iPhone 17 Pro Max' -configuration Debug
+     -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/shots.xcresult"
+     STORYCUE_DUO_CONDITIONS="" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+     CODE_SIGNING_ALLOWED=NO`.
+  4. `xcrun xcresulttool export attachments --path "$RUNNER_TEMP/shots.xcresult" --output-path
+     "$RUNNER_TEMP/raw"`; then a script reads `$RUNNER_TEMP/raw/manifest.json` and copies each
+     attachment whose suggested name starts `01-`…`05-` to `$RUNNER_TEMP/shots/<name>.png` (the
+     exported files are UUID-named; failure or automatic screenshots are ignored).
+  5. Assert exactly those five exist at 1320 × 2868 (`sips -g pixelWidth -g pixelHeight`);
+     upload `$RUNNER_TEMP/shots` as artifact `asc-screenshots-6.9`.
+- **Part B tests**: `testCaptureAppStoreScreenshots` only. **Done when** a dispatched run's
+  artifact holds the five named 1320 × 2868 PNGs, and every hit of
+  `grep -rnE "StoryCueDemo|seedForDemo|isDemo|func demo" StoryCue/` sits inside an `#if DEBUG`
+  block (the boss checks by reading each hit).
 
 ## Kimi layout review (after Part A's implement run, before Sol)
 
@@ -493,14 +566,42 @@ path deletes from the segment directory (`testExportNeverTouchesSegmentDirectory
 ## Done when (Part A)
 
 CI green (Build & Test + Release compile); every S1/S2a/S3/S4 test still passes; the new tests
-(5 + 2 + 1 + 3 + 24 + 8 + 4 + 2 = 49) run and pass; and these greps are empty:
+(5 + 2 + 1 + 3 + 30 + 8 + 4 + 2 = 55, every name visible in the `.xcresult`) run and pass;
+and these greps are empty:
 `grep -rnE "try!|as!|Task\.detached|unchecked Sendable|nonisolated\(unsafe\)" StoryCue/ StoryCueTests/`,
 `grep -rn "\.system(size:" StoryCue/`,
 `grep -rnE "import (AVFoundation|UIKit|SwiftUI)" StoryCue/SessionStore.swift`,
 `grep -rn "ShareLink" StoryCue/`,
-`grep -rn "removeItem" StoryCue/ | grep -vE "Library.swift|Exporter.swift|Stitcher.swift"`
-(the Exporter/Stitcher hits are S3's temp-directory cleanup, never the segment directory).
+`grep -rn "removeItem" StoryCue/ | grep -vE "^StoryCue/(Library|Exporter|Stitcher)\.swift:"`
+(the Exporter/Stitcher hits are S3's temp-directory cleanup, never the segment directory;
+`StoryCueTests/` is deliberately not covered — tests clean their temp dirs).
 Kimi layout findings and Sol's audit are adjudicated by the boss; edits they call for are boss
 follow-up commits. Device verification (export a multi-segment clip to Files and to Photos, then
 play it; kill the app mid-answer and confirm the recovered clip appears; delete a recording and
 watch storage drop) is **S5 rung 4b-export**, not this step.
+
+## Spec review (fresh-context Sonnet, 2026-10-02) — adjudication
+
+20 findings; the spec above already reflects every accepted one.
+
+- **Accepted (fixed in place):** 1 `finish` could delete a `nil`-outcome clip with bytes (now
+  keep-worthy; only `.failed(kept: false)` files go); 2 `load()` racing user mutations (local
+  copies + single assignment, mutations no-op and Recordings disabled until loaded, no-op while
+  a session is active); 3 `finish` lacked the fields to insert a record (now takes
+  `deck`/`startedAt`); 4 `delete` could drop the ledger/record after a failed file removal
+  (verify-then-abort); 5 synthesis promoted unkept failures to `.saved` (now
+  `.failed(kept: true)`); 6 export could start mid-delete (`deletingSessionIDs`,
+  `canStartExport`); 7 late progress hops (apply only while `.running`); 8 unwritable
+  archive-order test (`OrderProbe` + wrapper); 9 Part B CI (own `workflow_dispatch` workflow,
+  full xcodebuild flags, manifest-based renaming, no parallel testing); 10 Swift 6 (threshold on
+  `StorageStatus`, `[weak library = self.library]`); 11 demo seeding (`seedForDemo`, widened
+  guard check); 12 edge cases (quarantine only on `DecodingError`, I/O error suspends saves,
+  UUID suffix, ledger read failure skips synthesis, untracked `.mov` named as an accepted gap);
+  13 Keep/Delete hidden and refused for the active session; 14 no full-swipe delete; 15
+  `ExportModel` ownership and `.sharing` teardown; 16 question-label derivation,
+  `unknownQuestion`, `fileSize` helper, `libraryButton` identifier; 17 grep escaping and test
+  names visible in `.xcresult`; 18 `deleteUnchecked`, camera released before `finish`; 19 noon
+  timestamps; 20 `recoverOrphans` stays unused, `.saved`-with-`.writing` left as is.
+- **Not taken:** 19's second half (only `production()` should build the real `AVStitcher` /
+  `PHPhotoLibrarySaver`). Constructing them touches no hardware, and changing the default
+  would churn every existing `AppModelTests` call site for no behavior gain.
