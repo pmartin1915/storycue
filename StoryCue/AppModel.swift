@@ -137,9 +137,12 @@ final class AppModel {
         let clips = active.store.state.clips
         active.store.stop()
         self.active = nil
-        library.activeSessionID = nil
         await capture.shutdown()
         await library.finish(sessionID: id, deck: deck, startedAt: startedAt, clips: clips)
+        // Cleared only after finish: while the camera shuts down the session must stay
+        // protected, or a delete/discard in that window is undone by finish's stale clips.
+        // A session begun meanwhile owns the ID now, so leave it alone.
+        if library.activeSessionID == id { library.activeSessionID = nil }
         return true
     }
 }

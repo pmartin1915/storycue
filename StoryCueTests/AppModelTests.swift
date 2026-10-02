@@ -213,6 +213,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.library.sessions.first?.isFinished, true)
     }
 
+    func testSessionStaysProtectedUntilFinishReturns() async {
+        // Delete during capture shutdown must be refused, or finish would re-insert the
+        // record after its files were removed.
+        let spy = FactorySpy()
+        let model = makeModel(spy: spy)
+        await model.library.load()
+        await model.beginSession(deck: deck)
+        guard let store = model.active?.store, let id = model.active?.id else {
+            return XCTFail("expected an active session")
+        }
+
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+        guard case let .recording(segmentID) = store.state.phase else {
+            return XCTFail("expected .recording, got \(store.state.phase)")
+        }
+        store.send(.tapPause)
+        await store.waitForIdleEffects()
+        let mock = spy.captures[0]
+        await mock.simulate(.segmentFinished(
+            segmentID: segmentID,
+            outcome: .saved(url: SegmentFiles.url(for: segmentID, in: model.segmentDirectory))
+        ))
+        await store.waitForIdleEffects()
+        await mock.setStubShutdownDelay(0.3)
+
+        let endTask = Task { await model.endSession() }
+        while model.active != nil {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(model.library.activeSessionID, id)
+        let deleted = await model.library.delete(sessionID: id)
+        XCTAssertFalse(deleted)
+
+        let ended = await endTask.value
+        await model.library.waitForPendingSaves()
+        XCTAssertTrue(ended)
+        XCTAssertNil(model.library.activeSessionID)
+        XCTAssertEqual(model.library.sessions.map(\.id), [id])
+        XCTAssertEqual(model.library.sessions.first?.isFinished, true)
+    }
+
     func testEndSessionWithNoClipsLeavesNoRecord() async {
         let model = makeModel()
         await model.library.load()
