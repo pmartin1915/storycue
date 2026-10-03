@@ -36,16 +36,11 @@ actor SegmentLedger {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try JSONEncoder().encode(entries)
         let temporaryURL = directory.appendingPathComponent("segment-ledger.\(UUID().uuidString).tmp")
-        do {
-            try data.write(to: temporaryURL)
-            if FileManager.default.fileExists(atPath: fileURL.path) {
-                _ = try FileManager.default.replaceItemAt(fileURL, withItemAt: temporaryURL)
-            } else {
-                try FileManager.default.moveItem(at: temporaryURL, to: fileURL)
-            }
-        } catch {
-            try? FileManager.default.removeItem(at: temporaryURL)
-            throw error
+        try data.write(to: temporaryURL)
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            _ = try FileManager.default.replaceItemAt(fileURL, withItemAt: temporaryURL)
+        } else {
+            try FileManager.default.moveItem(at: temporaryURL, to: fileURL)
         }
     }
 

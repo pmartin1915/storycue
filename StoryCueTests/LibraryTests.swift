@@ -349,7 +349,7 @@ final class LibraryTests: XCTestCase {
         XCTAssertEqual(fixture.library.recovered.map(\.id), [second.id])
     }
 
-    func testLoadSkipsUnindexedEntryWithoutFileOrDeck() async throws {
+    func testLoadSkipsNoFileEntryAndAdoptsNoDeckFile() async throws {
         let fixture = try makeFixture()
         let noFile = try makeSegment(fixture, deck.questions[0].id, nil, bytes: 0)
         let noDeck = try makeSegment(fixture, "nonexistent.deck.1", nil)
