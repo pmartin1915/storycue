@@ -2,7 +2,8 @@
 
 _Written 2026-10-02. Follow-up to `docs/S2B-LIBRARY-SPEC.md` (Part A merged, PR #6). Closes the
 three 2026-10-02 `ai/IDEAS.md` entries that were deferred because they leak bytes but never
-lose a recording. Touches `Library`, `SessionIndex`, `SegmentLedger`, `UICopy` and tests only.
+lose a recording. Touches `Library`, `SessionIndex`, `UICopy` and tests only. `SegmentLedger` is deliberately
+untouched: `SessionStore` writes it on every Record tap.
 **Not on the recording path:** no `RecorderView`, `SessionStore`, `SessionMachine`, capture
 service or `AppModel` change._
 
@@ -57,9 +58,10 @@ Corollaries, each tested:
 3. **`finish`'s nothing-kept branch drops a ledger entry only for a verified-gone file**
    (IDEAS entry c, part 1). Today `try? removeItem` can fail and the entry is dropped anyway,
    making the surviving `.mov` invisible; now the entry stays and the next launch recovers it.
-4. **No stray temp on a failed save** (entry c, part 2). `SessionIndex.save` and
-   `SegmentLedger.save` (identical code) delete their own temp file if the write, replace or
-   move throws, then rethrow. The launch sweep also removes temps a crash left behind.
+4. **No stray temp on a failed save** (entry c, part 2). `SessionIndex.save` deletes its own
+   temp file if the write, replace or move throws, then rethrow. `SegmentLedger.save` has the
+   same shape but is on the recording path, so it is **not** changed; the launch sweep removes
+   its `segment-ledger.<UUID>.tmp` leftovers at next launch instead (follow-up for after S5).
 5. **Order inside `load()`:** the sweep runs after step 5 and before the step-6 assignment,
    synchronously (no await between its `activeSessionID` check and its deletions), on the local
    `records`. Its only await is the final `ledger.remove` for verified-gone IDs. It sets
@@ -75,9 +77,9 @@ private func removeFiles(for ids: [UUID]) -> Set<UUID>
 private func sweepStorage(records: inout [SessionRecord]) -> (removedIDs: Set<UUID>, adopted: Bool)
 ```
 `UICopy`: `static let unsortedRecordingsTitle = "Unsorted recordings"`.
-`SegmentLedger.save` / `SessionIndex.save`: temp cleanup on throw (no signature change).
+`SessionIndex.save`: temp cleanup on throw (no signature change).
 
-## Tests (new, in `LibraryTests`, `SessionIndexTests`, `SegmentLedgerTests`)
+## Tests (new, in `LibraryTests` and `SessionIndexTests`)
 
 (a) bare `.mov`
 - `testLoadDeletesZeroByteUnreferencedMov` — empty bare file is removed, its ledger entry dropped.
@@ -101,8 +103,11 @@ private func sweepStorage(records: inout [SessionRecord]) -> (removedIDs: Set<UU
 - `testLoadRemovesStrayTempFilesOnly` — `session-index.<UUID>.tmp` and
   `segment-ledger.<UUID>.tmp` go; `session-index.json`, `session-index.unreadable-*.json` and
   `notes.tmp` stay.
-- `testSaveFailureLeavesNoTempFile` (`SessionIndexTests`, `SegmentLedgerTests`) — with the target
+- `testSaveFailureLeavesNoTempFile` (`SessionIndexTests`) — with the target
   path blocked by a directory, whether `save` throws or not, no `*.tmp` remains.
+
+One existing test changes meaning: `testLoadSkipsUnindexedEntryWithoutFileOrDeck` is renamed
+`testLoadSkipsNoFileEntryAndAdoptsNoDeckFile` (the no-deck file is now adopted, not left invisible).
 
 ## Sol audit focus (merge gate)
 

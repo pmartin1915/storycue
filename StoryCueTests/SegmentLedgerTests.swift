@@ -82,20 +82,4 @@ final class SegmentLedgerTests: XCTestCase {
         let all = try await ledger.allEntries()
         XCTAssertEqual(all, [writing, finished, orphaned])
     }
-
-    func testSaveFailureLeavesNoTempFile() async throws {
-        let directory = try makeTempDirectory()
-        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
-        // A directory where the ledger file belongs: whether the replace throws or not,
-        // no segment-ledger.*.tmp may be left behind.
-        let target = directory.appendingPathComponent("segment-ledger.json")
-        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
-        try Data("keep".utf8).write(to: target.appendingPathComponent("inside.txt"))
-        let ledger = SegmentLedger(directory: directory)
-
-        try? await ledger.record(makeEntry(directory: directory))
-
-        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-        XCTAssertFalse(names.contains { $0.hasSuffix(".tmp") }, "\(names)")
-    }
 }
