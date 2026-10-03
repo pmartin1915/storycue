@@ -491,7 +491,7 @@ segment. `testArchiveCalledOnPersistLedger`
 **Screenshot size, verified 2026-10-02** against Apple's "Screenshot specifications" page: an
 iPhone app needs **either** a 6.9" set **or** a 6.5" set, and App Store Connect scales the one
 you give to the other. STRATEGY's "6.9" and 6.5"" pair is out of date. **One 6.9" set**:
-iPhone 17 Pro Max simulator, portrait 1320 × 2868.
+iPhone 17 Pro Max simulator, portrait 1320 × 2868. **As built (PR #7): iPhone 18 Pro Max** — the iOS 27 runner image has no 17 Pro Max; output is still 1320 × 2868. `screenshots.yml` also runs on PRs touching `StoryCueUITests/**` or itself (Perry OK, 2026-10-03).
 
 - **Demo launch mode (DEBUG only)**: launch argument `-StoryCueDemo` → `AppModel.demo()`
   (inside `#if DEBUG` in `AppModel.swift`; `StoryCueApp` picks it under `#if DEBUG`): a temp
