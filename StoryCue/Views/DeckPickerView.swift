@@ -25,6 +25,7 @@ struct DeckPickerView: View {
                         .padding(.vertical, 4)
                     }
                     .accessibilityLabel("\(deck.title), \(UICopy.questionCount(deck.questions.count))")
+                    .accessibilityIdentifier("deck.\(deck.id)")
                 }
             }
         }

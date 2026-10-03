@@ -105,6 +105,26 @@ targets:
         CFBundleShortVersionString: "1.0.0"
         CFBundleVersion: "1"
 
+  StoryCueUITests:
+    # Part B: App Store screenshot lane. UI tests live in their own scheme
+    # (StoryCueScreenshots) so the baseline and Duo lanes never run them.
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - StoryCueUITests
+    dependencies:
+      - target: StoryCue
+    settings:
+      base:
+        PRODUCT_NAME: StoryCueUITests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.pmartin1915.storycue.uitests
+        TEST_TARGET_NAME: StoryCue
+    info:
+      path: StoryCueUITests/Info.plist
+      properties:
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+
 schemes:
   StoryCue:
     build:
@@ -118,3 +138,14 @@ schemes:
       config: Debug
     archive:
       config: Release
+
+  StoryCueScreenshots:
+    build:
+      targets:
+        StoryCue: all
+        StoryCueUITests: all
+    test:
+      targets:
+        - StoryCueUITests
+    run:
+      config: Debug

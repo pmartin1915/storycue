@@ -23,8 +23,7 @@ struct RecorderView: View {
 
     var body: some View {
         ZStack {
-            CameraPreview(source: session.capture.previewSource)
-                .ignoresSafeArea()
+            previewBackdrop
 
             VStack(spacing: 16) {
                 // The question scrolls; the controls below never do. At the largest
@@ -60,6 +59,7 @@ struct RecorderView: View {
                 }
                 .disabled(!presentation.canLeave)
                 .accessibilityLabel(UICopy.done)
+                .accessibilityIdentifier("doneButton")
             }
         }
         .onChange(of: scenePhase) { old, new in
@@ -72,6 +72,33 @@ struct RecorderView: View {
             if new != .none { cancelCountdown() }
         }
     }
+
+    /// The camera feed, or — demo mode only (the simulator has no camera) — a soft dark
+    /// warm gradient so the recorder screenshot doesn't show a black void.
+    #if DEBUG
+    @ViewBuilder
+    private var previewBackdrop: some View {
+        if model.isDemo {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.20, green: 0.13, blue: 0.09),
+                    Color(red: 0.06, green: 0.04, blue: 0.03),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        } else {
+            CameraPreview(source: session.capture.previewSource)
+                .ignoresSafeArea()
+        }
+    }
+    #else
+    private var previewBackdrop: some View {
+        CameraPreview(source: session.capture.previewSource)
+            .ignoresSafeArea()
+    }
+    #endif
 
     // MARK: - Question panel
 
@@ -169,6 +196,7 @@ struct RecorderView: View {
         .frame(minWidth: 44, minHeight: 44)
         .disabled(p == .saving || p == .unavailable)
         .accessibilityLabel(primaryLabel(p))
+        .accessibilityIdentifier("recordButton")
     }
 
     private func primaryLabel(_ p: RecorderPresentation.Primary) -> String {
