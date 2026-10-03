@@ -88,4 +88,19 @@ final class SessionIndexTests: XCTestCase {
         let again = try await index.quarantineUnreadable(now: Date())
         XCTAssertNil(again)
     }
+
+    func testSaveFailureLeavesNoTempFile() async throws {
+        let directory = try makeTempDirectory()
+        // A directory where the index file belongs: whether the replace throws or not,
+        // no session-index.*.tmp may be left behind.
+        let target = directory.appendingPathComponent("session-index.json")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try Data("keep".utf8).write(to: target.appendingPathComponent("inside.txt"))
+        let index = SessionIndex(directory: directory)
+
+        try? await index.save([makeRecord()])
+
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        XCTAssertFalse(names.contains { $0.hasSuffix(".tmp") }, "\(names)")
+    }
 }
