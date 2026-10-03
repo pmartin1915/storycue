@@ -65,7 +65,7 @@ path after (or 1.1):
   - All 7 secrets set. API key = "Github Actions" `TM3T3B7QBF` (same as Shortless). **Cert: storycue has its OWN `.p12`** (`C:\tmp\apple-signing\storycue.p12`, rebuilt from `distribution.key` + `.pem` with `-legacy`, new password in Perry's password manager) because the original `.p12` password was lost. Same signing identity as the other apps; their secrets untouched.
   - Traps hit: a `!`-prefixed `gh secret set` saves an EMPTY value (no TTY) -- run interactive secret prompts in a real terminal. `security import` reports a wrong/empty password as "passphrase not correct".
   - Local `.claude/settings.local.json` (globally gitignored) allows `gh secret set|list -R pmartin1915/storycue`.
-  **Build 1.0 (7.1) uploaded 2026-10-03** from main `a7d5dc5` (deploy run `37086695886`, Perry's go); it carries the S2b Part A export UI. **Remaining: Perry runs 4b-recorder AND 4b-export (checklist below) on the 16 Pro in one pass on 7.1.**
+  **Build 1.0 (7.1) uploaded 2026-10-03** from main `a7d5dc5` (deploy run `37086695886`, Perry's go); it carries the S2b Part A export UI. TestFlight internal group **"Internal"** created 2026-10-03 (none existed, so no build had ever reached the phone), automatic distribution ON, both builds in it, Perry (pmartin1912@) invited. **Remaining: Perry runs 4b-recorder AND 4b-export (checklist below) on the 16 Pro in one pass on 7.1.**
   Original operator-act list (kept for history):
   1. Check the distribution certificate's expiry.
   2. App ID `dev.pmartin1915.storycue` (and `dev.pmartin1915.retold` in the same sitting).
