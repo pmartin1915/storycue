@@ -21,6 +21,8 @@ jobs:
   screenshots:
     name: Capture 6.9" App Store screenshots
     runs-on: xcode-27
+    # The 6.9" device on the iOS 27 runtime (the image ships no "iPhone 17 Pro Max", run
+    # 37083155626). The size check below still demands 1320 x 2868.
 
     steps:
       - name: Checkout
@@ -49,15 +51,15 @@ jobs:
 
       # 1. Boot the 6.9" simulator (1320 x 2868 portrait). Fail loudly, printing the
       #    device list, if the image doesn't carry this device type.
-      - name: Boot iPhone 17 Pro Max simulator
+      - name: Boot iPhone 18 Pro Max simulator
         run: |
-          if ! xcrun simctl list devices available | grep -q "iPhone 17 Pro Max"; then
-            echo "iPhone 17 Pro Max is not available on this runner:"
+          if ! xcrun simctl list devices available | grep -q "iPhone 18 Pro Max"; then
+            echo "iPhone 18 Pro Max is not available on this runner:"
             xcrun simctl list devices
             exit 1
           fi
-          xcrun simctl boot "iPhone 17 Pro Max" || true   # already booted is fine
-          xcrun simctl list devices | grep "iPhone 17 Pro Max"
+          xcrun simctl boot "iPhone 18 Pro Max" || true   # already booted is fine
+          xcrun simctl list devices | grep "iPhone 18 Pro Max"
 
       # 2. Deterministic status bar for every screenshot.
       - name: Override status bar
@@ -76,7 +78,7 @@ jobs:
           xcodebuild test \
             -project StoryCue.xcodeproj \
             -scheme StoryCueScreenshots \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+            -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max' \
             -configuration Debug \
             -parallel-testing-enabled NO \
             -resultBundlePath "$RUNNER_TEMP/shots.xcresult" \
