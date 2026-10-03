@@ -32,12 +32,23 @@ final class ScreenshotTests: XCTestCase {
         wait(for: [ready], timeout: 10)
         attachScreenshot(of: app, named: "03-recorder")
 
-        // 04-library: Recordings, through the deck picker's libraryButton. Done pops back to
-        // the consent card (the recorder sits on top of it), so go back once more first.
+        // 04-library: Recordings, through the deck picker's libraryButton. Done lands on the
+        // consent card or straight on the deck picker (the recorder is a root-level
+        // destination; CI run 37083268083 never showed the consent card), so accept either
+        // and go back once more only from the consent card.
         app.buttons["doneButton"].firstMatch.tap()
-        guard waitForScreen(consentConfirm, named: "04-library (back to consent after Done)") else { return }
-        app.navigationBars.buttons.element(boundBy: 0).tap()
         let libraryButton = app.buttons["libraryButton"].firstMatch
+        // A main-actor poll, not an NSPredicate block: the elements are main-actor isolated.
+        // Each `exists` is a round trip to the app, so the loop needs no sleep.
+        let deadline = Date().addingTimeInterval(10)
+        while !libraryButton.exists && !consentConfirm.exists && Date() < deadline {}
+        guard libraryButton.exists || consentConfirm.exists else {
+            XCTFail("Screen 04-library (deck picker or consent after Done) did not appear within 10 seconds")
+            return
+        }
+        if !libraryButton.exists {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
         guard waitForScreen(libraryButton, named: "04-library (deck picker toolbar)") else { return }
         libraryButton.tap()
         let grandparentsSession = app.descendants(matching: .any)["session.grandparents"].firstMatch
