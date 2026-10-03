@@ -84,6 +84,7 @@ enum UICopy {
     }
 
     static let unknownQuestion = "A question"
+    static let unsortedRecordingsTitle = "Unsorted recordings"
 
     static let libraryButton = "Recordings"
     static let libraryTitle = "Recordings"
