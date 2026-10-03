@@ -25,7 +25,6 @@ struct SessionDetailView: View {
         }
         .navigationTitle(library.record(id: sessionID)?.deckTitle ?? UICopy.libraryTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .accessibilityIdentifier("sessionDetail")
     }
 
     private func isShown(_ clip: Clip) -> Bool {

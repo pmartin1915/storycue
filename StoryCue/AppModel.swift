@@ -87,7 +87,12 @@ final class AppModel {
         let model = AppModel(
             segmentDirectory: segmentDirectory,
             makeCapture: { _ in MockCaptureService() },
-            makeBackground: { UIKitBackgroundTaskRunner() }
+            makeBackground: { UIKitBackgroundTaskRunner() },
+            // The seed files are a few junk bytes; report a plausible clip size (only for files
+            // that exist, so delete's "is it gone" check still works) and free space, so the
+            // Recordings storage footer in the screenshot reads like a real phone.
+            availableCapacity: { 96_000_000_000 },
+            fileSize: { url in AppModel.attributesFileSize(url).map { _ in 46_000_000 } }
         )
 
         // Fixed recent dates at local noon so the Recordings list reads like a real week.

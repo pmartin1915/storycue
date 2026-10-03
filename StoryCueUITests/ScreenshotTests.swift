@@ -44,9 +44,9 @@ final class ScreenshotTests: XCTestCase {
         guard waitForScreen(grandparentsSession, named: "04-library (Recordings)") else { return }
         attachScreenshot(of: app, named: "04-library")
 
-        // 05-session: the Grandparents session detail.
+        // 05-session: the Grandparents session detail (its inline title is the deck title).
         grandparentsSession.tap()
-        let sessionDetail = app.descendants(matching: .any)["sessionDetail"].firstMatch
+        let sessionDetail = app.navigationBars["Grandparents"].firstMatch
         guard waitForScreen(sessionDetail, named: "05-session (Grandparents detail)") else { return }
         attachScreenshot(of: app, named: "05-session")
     }
