@@ -69,6 +69,83 @@ final class AppModel {
         self.makeBackground = makeBackground
     }
 
+    #if DEBUG
+    /// Part B demo launch mode (`-StoryCueDemo`, used only by ScreenshotTests): swaps the
+    /// camera preview for a warm gradient (RecorderView) and pre-seeds the library.
+    var isDemo = false
+
+    /// Demo wiring for the App Store screenshots: a temp segment directory, a
+    /// `MockCaptureService` (default stubs are already authorized and report audio input),
+    /// and two finished library records whose segment files are a few junk bytes written
+    /// first (export is never exercised in demo mode). `seedForDemo` sets `isLoaded`, so
+    /// the root `.task`'s `load()` no-ops and the seed is never re-read from disk.
+    static func demo() -> AppModel {
+        let segmentDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StoryCueDemoSegments", isDirectory: true)
+        try? FileManager.default.createDirectory(at: segmentDirectory, withIntermediateDirectories: true)
+
+        let model = AppModel(
+            segmentDirectory: segmentDirectory,
+            makeCapture: { _ in MockCaptureService() },
+            makeBackground: { UIKitBackgroundTaskRunner() },
+            // The seed files are a few junk bytes; report a plausible clip size (only for files
+            // that exist, so delete's "is it gone" check still works) and free space, so the
+            // Recordings storage footer in the screenshot reads like a real phone.
+            availableCapacity: { 96_000_000_000 },
+            fileSize: { url in AppModel.attributesFileSize(url).map { _ in 46_000_000 } }
+        )
+
+        // Fixed recent dates at local noon so the Recordings list reads like a real week.
+        let calendar = Calendar.current
+        let grandparentsDay = calendar.date(from: DateComponents(year: 2026, month: 9, day: 27, hour: 12))
+            ?? Date()
+        let holidayTableDay = calendar.date(from: DateComponents(year: 2026, month: 9, day: 20, hour: 12))
+            ?? Date()
+
+        var records: [SessionRecord] = []
+        if let grandparents = Deck.v1Decks.first(where: { $0.id == "grandparents" }) {
+            records.append(makeDemoRecord(deck: grandparents, clipCount: 3, startedAt: grandparentsDay, in: segmentDirectory))
+        }
+        if let holidayTable = Deck.v1Decks.first(where: { $0.id == "holiday-table" }) {
+            records.append(makeDemoRecord(deck: holidayTable, clipCount: 5, startedAt: holidayTableDay, in: segmentDirectory))
+        }
+        model.library.seedForDemo(records)
+        model.isDemo = true
+        return model
+    }
+
+    /// One finished record: `clipCount` clips, one `.saved` segment each, using the deck's
+    /// real first question IDs. Segment URLs come only from `SegmentFiles` and each file
+    /// gets a few junk bytes before the record is built.
+    private static func makeDemoRecord(deck: Deck, clipCount: Int, startedAt: Date, in directory: URL) -> SessionRecord {
+        var clips: [Clip] = []
+        for index in 0..<clipCount {
+            let questionID = deck.questions[index].id
+            let segmentID = UUID()
+            let url = SegmentFiles.url(for: segmentID, in: directory)
+            try? Data([0x00, 0x01, 0x02, 0x03, 0x04]).write(to: url)
+            clips.append(Clip(
+                questionID: questionID,
+                segments: [Segment(
+                    id: segmentID,
+                    questionID: questionID,
+                    startedAt: startedAt.addingTimeInterval(TimeInterval(index * 60)),
+                    endReason: .userStop,
+                    outcome: .saved(url: url)
+                )]
+            ))
+        }
+        return SessionRecord(
+            id: UUID(),
+            deckID: deck.id,
+            deckTitle: deck.title,
+            startedAt: startedAt,
+            clips: clips,
+            isFinished: true
+        )
+    }
+    #endif
+
     /// Production wiring. Constructs NO capture service (the S1 nil-safety rule — nothing
     /// here touches a camera): the factories run inside `beginSession`, after the consent
     /// tap.

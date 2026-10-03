@@ -4,6 +4,7 @@
 StoryCue/Info.plist
 StoryCueTests/Info.plist
 StoryCueDuoTests/Info.plist
+StoryCueUITests/Info.plist
 xcuserdata/
 DerivedData/
 build/

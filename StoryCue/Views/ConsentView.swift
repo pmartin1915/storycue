@@ -46,6 +46,7 @@ struct ConsentView: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .disabled(isBeginning || !model.library.isLoaded)
                 .accessibilityLabel(UICopy.consentConfirm)
+                .accessibilityIdentifier("consentConfirm")
             }
             .padding()
         }

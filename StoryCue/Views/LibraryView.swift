@@ -133,6 +133,7 @@ struct LibraryView: View {
             }
             .padding(.vertical, 4)
         }
+        .accessibilityIdentifier("session.\(record.deckID)")
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if library.canDelete(record.id) {
                 Button(UICopy.deleteSession, role: .destructive) {

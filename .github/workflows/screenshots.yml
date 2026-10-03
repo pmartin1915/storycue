@@ -1,0 +1,189 @@
+name: App Store Screenshots
+
+# Needed once before S6 and on demand after copy changes. build.yml stays PR-only and
+# untouched. The narrow pull_request trigger exists because a workflow_dispatch workflow
+# can't be dispatched until it is on main, and build.yml never compiles the UI-test target:
+# without it, a PR that breaks ScreenshotTests (or this file) would merge green.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: ['StoryCueUITests/**', '.github/workflows/screenshots.yml']
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    name: Capture 6.9" App Store screenshots
+    runs-on: xcode-27
+    # The 6.9" device on the iOS 27 runtime (the image ships no "iPhone 17 Pro Max", run
+    # 37083155626). The size check below still demands 1320 x 2868.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Same rule as build.yml: the baseline is always the newest RELEASE Xcode.
+      - name: Select Xcode
+        run: |
+          source .github/scripts/select-xcode.sh   # sets RELEASE_XCODE / DUO_XCODE here and in $GITHUB_ENV
+          sudo xcode-select -s "$RELEASE_XCODE/Contents/Developer"
+          echo "DEVELOPER_DIR=$RELEASE_XCODE/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Using: $RELEASE_XCODE"
+          DEVELOPER_DIR="$RELEASE_XCODE/Contents/Developer" xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          curl -sL https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip -o /tmp/xcodegen.zip
+          unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
+          XCODEGEN_BIN=$(find /tmp/xcodegen -name "xcodegen" -type f | head -1)
+          sudo cp "$XCODEGEN_BIN" /usr/local/bin/xcodegen
+          sudo chmod +x /usr/local/bin/xcodegen
+          xcodegen --version
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # 1. Boot the 6.9" simulator (1320 x 2868 portrait). Fail loudly, printing the
+      #    device list, if the image doesn't carry this device type.
+      - name: Boot iPhone 18 Pro Max simulator
+        run: |
+          if ! xcrun simctl list devices available | grep -q "iPhone 18 Pro Max"; then
+            echo "iPhone 18 Pro Max is not available on this runner:"
+            xcrun simctl list devices
+            exit 1
+          fi
+          xcrun simctl boot "iPhone 18 Pro Max" || true   # already booted is fine
+          xcrun simctl list devices | grep "iPhone 18 Pro Max"
+
+      # 2. Deterministic status bar for every screenshot.
+      - name: Override status bar
+        run: |
+          xcrun simctl status_bar booted override \
+            --time "9:41" \
+            --batteryState charged \
+            --batteryLevel 100 \
+            --cellularBars 4 \
+            --wifiBars 3
+
+      # 3. Run the screenshot UI test (demo mode; no permission prompts possible).
+      - name: Run ScreenshotTests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project StoryCue.xcodeproj \
+            -scheme StoryCueScreenshots \
+            -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max' \
+            -configuration Debug \
+            -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/shots.xcresult" \
+            STORYCUE_DUO_CONDITIONS="" \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+      # 4. Export attachments and rename by the test's fixed names. The exported files are
+      #    UUID-named; manifest.json maps them to suggestedHumanReadableName, which carries
+      #    a "_0_<uuid>.png"-style suffix, so match by the 01-…05- prefix. Anything else
+      #    (automatic failure screenshots) is ignored. The manifest is printed on failure.
+      - name: Export and rename attachments
+        run: |
+          xcrun xcresulttool export attachments \
+            --path "$RUNNER_TEMP/shots.xcresult" \
+            --output-path "$RUNNER_TEMP/raw"
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          import sys
+
+          runner_temp = os.environ["RUNNER_TEMP"]
+          raw = os.path.join(runner_temp, "raw")
+          manifest_path = os.path.join(raw, "manifest.json")
+          shots = os.path.join(runner_temp, "shots")
+          expected = ["01-decks", "02-consent", "03-recorder", "04-library", "05-session"]
+
+          try:
+              with open(manifest_path, encoding="utf-8") as handle:
+                  manifest = json.load(handle)
+          except Exception as error:
+              print(f"could not read manifest: {error}", file=sys.stderr)
+              sys.exit(1)
+
+          def iter_nodes(node):
+              if isinstance(node, dict):
+                  yield node
+                  for value in node.values():
+                      yield from iter_nodes(value)
+              elif isinstance(node, list):
+                  for value in node:
+                      yield from iter_nodes(value)
+
+          copied = {}
+          for entry in iter_nodes(manifest):
+              suggested = entry.get("suggestedHumanReadableName")
+              exported = entry.get("exportedFileName")
+              if not suggested or not exported:
+                  continue
+              name = next((n for n in expected if suggested.startswith(n)), None)
+              # The suggested name may carry a "_0_<uuid>.png" suffix; the stem before
+              # the first underscore is the attachment name the test set.
+              if name is None or name in copied:
+                  continue
+              source = os.path.join(raw, exported)
+              if not os.path.isfile(source):
+                  continue
+              os.makedirs(shots, exist_ok=True)
+              destination = os.path.join(shots, name + ".png")
+              shutil.copyfile(source, destination)
+              copied[name] = destination
+
+          if sorted(copied) != sorted(expected):
+              print("expected 5 attachments (01-…05-), got:", sorted(copied), file=sys.stderr)
+              print("manifest.json:", json.dumps(manifest, indent=2)[:4000], file=sys.stderr)
+              sys.exit(1)
+          for name in sorted(copied):
+              print(f"{name} -> {copied[name]}")
+          PY
+
+      # 5. Assert exactly the five named PNGs exist at 1320 x 2868, then upload them.
+      - name: Verify sizes and upload artifact
+        run: |
+          set -euo pipefail
+          for name in 01-decks 02-consent 03-recorder 04-library 05-session; do
+            file="$RUNNER_TEMP/shots/$name.png"
+            if [ ! -f "$file" ]; then
+              echo "missing screenshot: $file"
+              exit 1
+            fi
+            dimensions=$(sips -g pixelWidth -g pixelHeight "$file" | awk '/pixelWidth/ { w = $2 } /pixelHeight/ { h = $2 } END { print w " " h }')
+            echo "$name.png: $dimensions"
+            if [ "$dimensions" != "1320 2868" ]; then
+              echo "unexpected size for $name.png: $dimensions (want 1320 2868)"
+              exit 1
+            fi
+          done
+          count=$(find "$RUNNER_TEMP/shots" -maxdepth 1 -name '*.png' | wc -l | tr -d ' ')
+          if [ "$count" != "5" ]; then
+            echo "expected exactly 5 PNGs in $RUNNER_TEMP/shots, found $count"
+            ls -la "$RUNNER_TEMP/shots"
+            exit 1
+          fi
+      - name: Upload screenshots artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: asc-screenshots-6.9
+          path: ${{ runner.temp }}/shots
+
+      # Failure evidence: the xcresult carries XCTest's automatic failure screenshots.
+      - name: Upload xcresult
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shots-xcresult-${{ github.run_number }}
+          path: ${{ runner.temp }}/shots.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
