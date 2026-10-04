@@ -82,7 +82,7 @@ struct AnswerPlayerView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .colorScheme(.dark)
+            .environment(.colorScheme, .dark)
     }
 
     private func load() async {

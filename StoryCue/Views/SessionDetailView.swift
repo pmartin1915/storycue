@@ -56,6 +56,8 @@ struct SessionDetailView: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
+                    .textCase(nil)   // inset-grouped headers uppercase by default
+                    .foregroundStyle(.primary)
                 }
             }
             Section {
