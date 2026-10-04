@@ -29,6 +29,8 @@ enum UICopy {
     static let consentConfirm = "We're ready"
 
     static func questionCounter(_ i: Int, _ n: Int) -> String { "Question \(i + 1) of \(n)" }
+    static let moveQuestionToBottom = "Move question to bottom"
+    static let moveQuestionToTop = "Move question to top"
 
     static let record = "Record"
     static let pause = "Pause"
