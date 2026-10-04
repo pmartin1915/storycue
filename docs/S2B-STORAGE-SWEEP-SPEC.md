@@ -5,7 +5,30 @@ three 2026-10-02 `ai/IDEAS.md` entries that were deferred because they leak byte
 lose a recording. Touches `Library`, `SessionIndex`, `UICopy` and tests only. `SegmentLedger` is deliberately
 untouched: `SessionStore` writes it on every Record tap.
 **Not on the recording path:** no `RecorderView`, `SessionStore`, `SessionMachine`, capture
-service or `AppModel` change._
+service or `AppModel` change_ (one exception, added by the audit fix below: `AppModel` gains the
+production `attributesFileState` stat and passes it to `Library`).
+
+## Audit fix (2026-10-04, Sol audit of `acc600e`: 1 high, 2 medium)
+
+`Library` now takes `fileState: (URL) -> FileState` (`.missing` / `.present(size)` / `.unreadable`)
+instead of `fileSize: (URL) -> Int64?`, whose `nil` meant both "no such file" and "stat failed".
+Production (`AppModel.attributesFileState`) returns `.missing` only on a positive no-such-file
+error (Cocoa 4/260 or POSIX `ENOENT`); any other error is `.unreadable`. Three rules follow:
+
+1. **Unreadable is "can't tell", never "empty" or "gone".** Load step 4 leaves an undecided
+   segment undecided when its stat is unreadable (the high finding: it was relabeled
+   `.failed(kept: false)` and then swept). This line was also on main before this PR.
+2. **Gone means proven gone.** `removeFiles` counts an ID as gone only when it was already
+   `.missing`, or `removeItem` did not throw AND the stat afterwards is `.missing`. `discard` and
+   `delete` go through it too, so an unreadable file is never hidden from the index or ledger.
+3. **A file is deleted only when every reference to its ID is an unkept failure.** The sweep and
+   both `finish` branches skip any ID that some record (in `records` / `sessions`) still references
+   with `.saved`, `.failed(kept: true)` or `nil`.
+
+Tests: `testLoadLeavesUnreadableUndecidedSegmentUndecided`,
+`testFinishNothingKeptKeepsLedgerEntryWhenStatFails`, `testDeleteAbortsWhenStatFails`,
+`testLoadSweepKeepsFileAnotherRecordSaved`, `testFinishKeepsFileAnotherRecordSaved`,
+`testAttributesFileStateDistinguishesMissingFromUnreadable`.
 
 ## The data-loss invariant (the one rule this spec is built on)
 
@@ -29,10 +52,10 @@ Everything else is never deleted by the sweep: any file with bytes that is unref
 Corollaries, each tested:
 - **No proof, no delete.** The launch sweep is skipped entirely when the index or the ledger
   could not be read, or when `activeSessionID != nil` (a live recording's file may be 0 bytes
-  and unreferenced for a moment). A `fileSize` that returns nil on a listed file means "can't
+  and unreferenced for a moment). A `fileState` of `.unreadable` on a listed file means "can't
   tell" and the file is left alone.
 - **Files first, ledger second.** A ledger entry is dropped only for a segment whose file is
-  verified gone (`fileSize == nil` after the removal attempt). A file that survived keeps its
+  verified gone (`.missing` after a removal that did not throw). A file that survived keeps its
   entry, so the next launch's step 5 (or adoption) can still surface it.
 - **Index-referenced bytes never vanish silently.** Deleting happens only after the in-memory
   records are final; the index save is enqueued first.

@@ -14,7 +14,7 @@ final class LibraryTests: XCTestCase {
         let segmentDirectory: URL
         let temporaryRoot: URL
         let capacity: Int64?
-        let fileSize: @Sendable (URL) -> Int64?
+        let fileState: @Sendable (URL) -> FileState
     }
 
     private let deck = Deck.v1Decks[0]
@@ -22,7 +22,7 @@ final class LibraryTests: XCTestCase {
 
     private func makeFixture(
         capacity: Int64? = 10_000_000_000,
-        fileSize: @escaping @Sendable (URL) -> Int64? = AppModel.attributesFileSize
+        fileState: @escaping @Sendable (URL) -> FileState = AppModel.attributesFileState
     ) throws -> Fixture {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("LibraryTests.\(UUID().uuidString)", isDirectory: true)
@@ -38,7 +38,7 @@ final class LibraryTests: XCTestCase {
             stitcher: MockStitcher(),
             photos: MockPhotoLibrary(),
             availableCapacity: { capacity },
-            fileSize: fileSize
+            fileSize: { fileState($0).size }
         )
         let index = SessionIndex(directory: segmentDirectory)
         let ledger = SegmentLedger(directory: segmentDirectory)
@@ -48,7 +48,7 @@ final class LibraryTests: XCTestCase {
             ledger: ledger,
             exporter: exporter,
             availableCapacity: { capacity },
-            fileSize: fileSize
+            fileState: fileState
         )
         return Fixture(
             library: library,
@@ -58,7 +58,7 @@ final class LibraryTests: XCTestCase {
             segmentDirectory: segmentDirectory,
             temporaryRoot: temporaryRoot,
             capacity: capacity,
-            fileSize: fileSize
+            fileState: fileState
         )
     }
 
@@ -71,7 +71,7 @@ final class LibraryTests: XCTestCase {
             ledger: SegmentLedger(directory: fixture.segmentDirectory),
             exporter: fixture.exporter,
             availableCapacity: { capacity },
-            fileSize: fixture.fileSize
+            fileState: fixture.fileState
         )
     }
 
@@ -588,11 +588,11 @@ final class LibraryTests: XCTestCase {
 
     func testDeleteAbortsWhenFileRemains() async throws {
         let stuckID = UUID()
-        let stubbedSize: @Sendable (URL) -> Int64? = { url in
-            if SegmentFiles.segmentID(from: url) == stuckID { return 4 }
-            return AppModel.attributesFileSize(url)
+        let stubbedState: @Sendable (URL) -> FileState = { url in
+            if SegmentFiles.segmentID(from: url) == stuckID { return .present(4) }
+            return AppModel.attributesFileState(url)
         }
-        let fixture = try makeFixture(fileSize: stubbedSize)
+        let fixture = try makeFixture(fileState: stubbedState)
         let first = try makeSegment(fixture, deck.questions[0].id, savedOutcome)
         let stuckFile = SegmentFiles.url(for: stuckID, in: fixture.segmentDirectory)
         try Data([0x01]).write(to: stuckFile)
@@ -862,10 +862,10 @@ final class LibraryTests: XCTestCase {
     func testFinishNothingKeptKeepsLedgerEntryWhenRemovalFails() async throws {
         let stuckID = UUID()
         // The stub keeps reporting this file after removeItem, as if the removal had failed.
-        let stubbedSize: @Sendable (URL) -> Int64? = { url in
-            SegmentFiles.segmentID(from: url) == stuckID ? 4 : AppModel.attributesFileSize(url)
+        let stubbedState: @Sendable (URL) -> FileState = { url in
+            SegmentFiles.segmentID(from: url) == stuckID ? .present(4) : AppModel.attributesFileState(url)
         }
-        let fixture = try makeFixture(fileSize: stubbedSize)
+        let fixture = try makeFixture(fileState: stubbedState)
         let library = fixture.library
         await library.load()
         let removable = try makeSegment(fixture, deck.questions[0].id, .failed(kept: false))
@@ -954,5 +954,168 @@ final class LibraryTests: XCTestCase {
 
         XCTAssertEqual(second.sessions, library.sessions)
         XCTAssertEqual(second.sessions.first?.id, sessionID)
+    }
+
+    // MARK: - Unreadable stats and shared references (PR #8 audit)
+
+    /// A segment `fileState` reports `.unreadable` for: its bytes are written, the stub hides them.
+    private func makeUnreadableSegment(
+        _ fixture: Fixture,
+        id: UUID,
+        _ questionID: String,
+        _ outcome: SegmentOutcome?
+    ) throws -> Segment {
+        try Data([0x01, 0x02, 0x03, 0x04]).write(to: SegmentFiles.url(for: id, in: fixture.segmentDirectory))
+        return Segment(id: id, questionID: questionID, startedAt: noon(), endReason: nil, outcome: outcome)
+    }
+
+    func testLoadLeavesUnreadableUndecidedSegmentUndecided() async throws {
+        let unreadableID = UUID()
+        let fixture = try makeFixture(fileState: { url in
+            SegmentFiles.segmentID(from: url) == unreadableID ? .unreadable : AppModel.attributesFileState(url)
+        })
+        let segment = try makeUnreadableSegment(fixture, id: unreadableID, deck.questions[0].id, nil)
+        try await recordLedger(fixture, segment)
+        try await fixture.index.save([makeRecord([clip(deck.questions[0].id, [segment])], finished: false)])
+
+        await fixture.library.load()
+
+        XCTAssertNil(firstSegment(fixture.library)?.outcome)
+        XCTAssertEqual(fixture.library.recovered.map(\.id), [unreadableID])
+        XCTAssertTrue(fileExists(fixture, segment))
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.status), [.writing])
+
+        // The stat reads fine on the next launch: the clip is still undecided, its file intact.
+        await fixture.library.waitForPendingSaves()
+        let capacity = fixture.capacity
+        let relaunch = Library(
+            segmentDirectory: fixture.segmentDirectory,
+            index: SessionIndex(directory: fixture.segmentDirectory),
+            ledger: SegmentLedger(directory: fixture.segmentDirectory),
+            exporter: fixture.exporter,
+            availableCapacity: { capacity },
+            fileState: AppModel.attributesFileState
+        )
+        await relaunch.load()
+        XCTAssertNil(relaunch.sessions.first?.clips.first?.segments.first?.outcome)
+        XCTAssertTrue(fileExists(fixture, segment))
+    }
+
+    func testFinishNothingKeptKeepsLedgerEntryWhenStatFails() async throws {
+        let stuckID = UUID()
+        // removeItem really succeeds; the stat afterwards fails, so "gone" is not proven.
+        let fixture = try makeFixture(fileState: { url in
+            SegmentFiles.segmentID(from: url) == stuckID ? .unreadable : AppModel.attributesFileState(url)
+        })
+        let library = fixture.library
+        await library.load()
+        let stuck = try makeUnreadableSegment(fixture, id: stuckID, deck.questions[0].id, .failed(kept: false))
+        try await recordLedger(fixture, stuck, finished: true)
+
+        await library.finish(
+            sessionID: UUID(),
+            deck: deck,
+            startedAt: noon(),
+            clips: [clip(deck.questions[0].id, [stuck])]
+        )
+
+        XCTAssertTrue(library.sessions.isEmpty)
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.segmentID), [stuckID])
+    }
+
+    func testDeleteAbortsWhenStatFails() async throws {
+        let stuckID = UUID()
+        let fixture = try makeFixture(fileState: { url in
+            SegmentFiles.segmentID(from: url) == stuckID ? .unreadable : AppModel.attributesFileState(url)
+        })
+        let stuck = try makeUnreadableSegment(fixture, id: stuckID, deck.questions[0].id, savedOutcome)
+        try await recordLedger(fixture, stuck, finished: true)
+        let record = makeRecord([clip(deck.questions[0].id, [stuck])])
+        try await fixture.index.save([record])
+        let library = fixture.library
+        await library.load()
+
+        let deleted = await library.delete(sessionID: record.id)
+
+        XCTAssertFalse(deleted)
+        XCTAssertNotNil(library.record(id: record.id))
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.segmentID), [stuckID])
+    }
+
+    func testLoadSweepKeepsFileAnotherRecordSaved() async throws {
+        let fixture = try makeFixture()
+        let shared = try makeSegment(fixture, deck.questions[0].id, savedOutcome)
+        var unkeptCopy = shared
+        unkeptCopy.outcome = .failed(kept: false)
+        try await recordLedger(fixture, shared, finished: true)
+        try await fixture.index.save([
+            makeRecord([clip(deck.questions[0].id, [shared])]),
+            makeRecord([clip(deck.questions[0].id, [unkeptCopy])], startedAt: noon(60)),
+        ])
+
+        await fixture.library.load()
+
+        XCTAssertTrue(fileExists(fixture, shared))
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.segmentID), [shared.id])
+    }
+
+    func testFinishKeepsFileAnotherRecordSaved() async throws {
+        let fixture = try makeFixture()
+        let library = fixture.library
+        await library.load()
+        let shared = try makeSegment(fixture, deck.questions[0].id, savedOutcome)
+        try await recordLedger(fixture, shared, finished: true)
+        await library.finish(
+            sessionID: UUID(),
+            deck: deck,
+            startedAt: noon(),
+            clips: [clip(deck.questions[0].id, [shared])]
+        )
+        var unkeptCopy = shared
+        unkeptCopy.outcome = .failed(kept: false)
+        let good = try makeSegment(fixture, deck.questions[1].id, savedOutcome)
+
+        // Kept branch, then nothing-kept branch: neither may delete the shared file.
+        await library.finish(
+            sessionID: UUID(),
+            deck: deck,
+            startedAt: noon(60),
+            clips: [clip(deck.questions[0].id, [unkeptCopy]), clip(deck.questions[1].id, [good])]
+        )
+        await library.finish(
+            sessionID: UUID(),
+            deck: deck,
+            startedAt: noon(120),
+            clips: [clip(deck.questions[0].id, [unkeptCopy])]
+        )
+
+        XCTAssertTrue(fileExists(fixture, shared))
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.segmentID), [shared.id])
+    }
+
+    func testAttributesFileStateDistinguishesMissingFromUnreadable() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FileStateTests.\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("\(UUID().uuidString).mov")
+
+        XCTAssertEqual(AppModel.attributesFileState(file), .missing)
+        try Data([0x01, 0x02, 0x03]).write(to: file)
+        XCTAssertEqual(AppModel.attributesFileState(file), .present(3))
+
+        // A directory with no permissions: stat of its child fails with EACCES, not ENOENT.
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: directory.path)
+        let locked = AppModel.attributesFileState(file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
+        if locked == .present(3) {
+            throw XCTSkip("permissions not enforced for this process (running as root?)")
+        }
+        XCTAssertEqual(locked, .unreadable)
     }
 }

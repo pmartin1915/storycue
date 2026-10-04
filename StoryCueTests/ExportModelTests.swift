@@ -47,7 +47,7 @@ final class ExportModelTests: XCTestCase {
             ledger: SegmentLedger(directory: segmentDirectory),
             exporter: exporter,
             availableCapacity: { nil },
-            fileSize: AppModel.attributesFileSize
+            fileState: AppModel.attributesFileState
         )
 
         var allSegments: [Segment] = []
