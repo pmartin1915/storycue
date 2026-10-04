@@ -72,7 +72,10 @@ struct RecorderView: View {
             }
         }
         .onChange(of: scenePhase) { old, new in
-            if new != .active { cancelCountdown() }
+            if new != .active {
+                cancelCountdown()
+                dragOffset = 0      // an interrupted drag may never reach onEnded
+            }
             if let event = ScenePhaseMapping.event(from: old, to: new) {
                 store.send(event)
             }
@@ -117,11 +120,13 @@ struct RecorderView: View {
     /// ScrollView a drag would fight scrolling, so there the handle button moves it.
     private var questionArea: some View {
         ViewThatFits(in: .vertical) {
-            questionPanel
+            questionPanel(movable: true)
                 .offset(y: dragOffset)
                 .gesture(questionDrag)
+            // A card this tall fills the whole area, so "top" and "bottom" are the same
+            // place: no handle.
             ScrollView {
-                questionPanel
+                questionPanel(movable: false)
             }
             .scrollBounceBehavior(.basedOnSize)
         }
@@ -158,17 +163,19 @@ struct RecorderView: View {
             Capsule()
                 .fill(.white.opacity(0.6))
                 .frame(width: 36, height: 5)
-                .frame(maxWidth: .infinity, minHeight: 28)
+                .frame(maxWidth: .infinity, minHeight: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .padding(.vertical, -8)              // 44 pt to touch, 28 pt of card height
+        .accessibilitySortPriority(-1)       // VoiceOver reads the question first
         .accessibilityLabel(questionAtBottom ? UICopy.moveQuestionToTop : UICopy.moveQuestionToBottom)
         .accessibilityIdentifier("questionHandle")
     }
 
-    private var questionPanel: some View {
+    private func questionPanel(movable: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            questionHandle
+            if movable { questionHandle }
             Text(UICopy.questionCounter(store.state.questionIndex, store.state.deck.questions.count))
                 .font(.footnote)
                 .foregroundStyle(.white.opacity(0.85))

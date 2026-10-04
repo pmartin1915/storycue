@@ -88,6 +88,10 @@ final class ScreenshotTests: XCTestCase {
         guard waitForScreen(questionPanel, named: "dark-04-question-bottom (question card)") else { return }
         let panelTopBefore = questionPanel.frame.minY
         questionPanel.swipeDown()
+        let deadline = Date().addingTimeInterval(3)   // let the snap animation finish
+        while questionPanel.frame.minY <= panelTopBefore + 100, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
         XCTAssertGreaterThan(questionPanel.frame.minY, panelTopBefore + 100, "question card did not move down")
         attachScreenshot(of: app, named: "dark-04-question-bottom")
     }
@@ -113,11 +117,13 @@ final class ScreenshotTests: XCTestCase {
         wait(for: [ready], timeout: 10)
         attachScreenshot(of: app, named: "ax5-03-recorder")
 
-        // At accessibility sizes the handle button moves the card (it may be scrolling).
+        // At AX5 the card usually fills the area and scrolls, so it has no handle. When it
+        // does fit, the handle button moves it.
         let handle = app.buttons["questionHandle"].firstMatch
-        guard waitForScreen(handle, named: "ax5-04-question-bottom (question handle)") else { return }
-        handle.tap()
-        attachScreenshot(of: app, named: "ax5-04-question-bottom")
+        if handle.waitForExistence(timeout: 2) {
+            handle.tap()
+            attachScreenshot(of: app, named: "ax5-04-question-bottom")
+        }
     }
 
     /// Waits up to 10 s for the screen's anchor element and fails naming the screen.
