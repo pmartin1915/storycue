@@ -240,7 +240,7 @@ final class AppModel {
         await task.value
         // Open the finished session only if nothing replaced it meanwhile: beginSession
         // also waits on `ending`, and its continuation may resume first and set `active`.
-        if active == nil, library.record(id: id) != nil {
+        if self.active == nil, library.record(id: id) != nil {   // self.: `active` here is the unwrapped local
             finishedSessionID = id
         }
         return true
