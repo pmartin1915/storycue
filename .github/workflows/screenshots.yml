@@ -129,7 +129,7 @@ jobs:
               exported = entry.get("exportedFileName")
               if not suggested or not exported:
                   continue
-              name = next((n for n in expected + optional if suggested.startswith(n)), None)
+              name = next((n for n in expected if suggested.startswith(n)), None)
               # The suggested name may carry a "_0_<uuid>.png" suffix; the stem before
               # the first underscore is the attachment name the test set.
               if name is None or name in copied:
@@ -142,7 +142,7 @@ jobs:
               shutil.copyfile(source, destination)
               copied[name] = destination
 
-          if sorted(n for n in copied if n in expected) != sorted(expected):
+          if sorted(copied) != sorted(expected):
               print("expected 5 attachments (01-…05-), got:", sorted(copied), file=sys.stderr)
               print("manifest.json:", json.dumps(manifest, indent=2)[:4000], file=sys.stderr)
               sys.exit(1)
