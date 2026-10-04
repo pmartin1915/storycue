@@ -6,6 +6,7 @@ import SwiftUI
 struct LibraryView: View {
     let model: AppModel
 
+    @Environment(\.dismiss) private var dismiss
     @State private var pendingSessionDelete: UUID?
     @State private var pendingClipDelete: RecoveredClip?
 
@@ -44,11 +45,14 @@ struct LibraryView: View {
         }
         .overlay {
             if library.sessions.isEmpty && recovered.isEmpty {
-                ContentUnavailableView(
-                    UICopy.libraryEmptyTitle,
-                    systemImage: "video.slash",
-                    description: Text(UICopy.libraryEmptyBody)
-                )
+                ContentUnavailableView {
+                    Label(UICopy.libraryEmptyTitle, systemImage: "video.slash")
+                } description: {
+                    Text(UICopy.libraryEmptyBody)
+                } actions: {
+                    Button(UICopy.libraryEmptyAction) { dismiss() }
+                        .primaryAction()
+                }
             }
         }
         .navigationTitle(UICopy.libraryTitle)
@@ -121,17 +125,11 @@ struct LibraryView: View {
         NavigationLink {
             SessionDetailView(sessionID: record.id, model: model)
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(record.deckTitle)
-                    .font(.title2)
-                Text(record.startedAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text(UICopy.clipCount(record.manifest.count))
+            DeckRowLabel(deckID: record.deckID, title: record.deckTitle) {
+                Text(UICopy.sessionSubtitle(record.startedAt, count: record.manifest.count))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 4)
         }
         .accessibilityIdentifier("session.\(record.deckID)")
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {

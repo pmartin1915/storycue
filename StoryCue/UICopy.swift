@@ -7,6 +7,16 @@ enum UICopy {
     static let appTitle = "StoryCue"
     static let deckPickerTitle = "Choose a deck"
     static func questionCount(_ n: Int) -> String { "\(n) questions" }
+    static func deckTeaser(_ deckID: String) -> String {
+        switch deckID {
+        case "grandparents": "Childhood, first jobs, and the years that shaped them"
+        case "parents": "The day you were born, and what parenting taught them"
+        case "kids": "Kids interview the grownups: toys, school, old fears"
+        case "couples": "How you met, and the life you've built since"
+        case "holiday-table": "Pass the phone around the table and take turns"
+        default: ""
+        }
+    }
 
     // Consent card (also the permission-priming screen: the system camera/mic prompts
     // appear only after the confirm tap, with this explanation already on screen).
@@ -78,8 +88,15 @@ enum UICopy {
     static let libraryButton = "Recordings"
     static let libraryTitle = "Recordings"
     static let libraryEmptyTitle = "No recordings yet"
-    static let libraryEmptyBody = "Choose a deck to record your first conversation."
+    static let libraryEmptyBody = "Your conversations will show up here."
+    static let libraryEmptyAction = "Choose a deck"
     static func clipCount(_ n: Int) -> String { n == 1 ? "1 answer" : "\(n) answers" }
+    static func sessionSubtitle(_ date: Date, count: Int) -> String {
+        "\(date.formatted(.dateTime.month(.abbreviated).day())) · \(clipCount(count))"
+    }
+    static func sessionSummary(_ date: Date, count: Int) -> String {
+        "\(date.formatted(date: .long, time: .shortened)) · \(clipCount(count))"
+    }
 
     static func storageFooter(used: Int64, available: Int64?) -> String {
         var text = "Recordings use \(fileSize(used))."

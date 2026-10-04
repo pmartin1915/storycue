@@ -79,6 +79,15 @@ final class RecorderPresentationTests: XCTestCase {
         XCTAssertEqual(make(state: makeState(phase: .paused(reason: .userPause))).primary, .resume)
     }
 
+    func testGlyphMapping() {
+        XCTAssertEqual(RecorderPresentation.Primary.record.glyph, .dot)
+        XCTAssertEqual(RecorderPresentation.Primary.pause.glyph, .square)
+        XCTAssertEqual(RecorderPresentation.Primary.resume.glyph, .dot)
+        XCTAssertEqual(RecorderPresentation.Primary.saving.glyph, .spinner)
+        XCTAssertEqual(RecorderPresentation.Primary.cancelCountdown.glyph, .cancel)
+        XCTAssertEqual(RecorderPresentation.Primary.unavailable.glyph, .dot)
+    }
+
     func testCountdownOverridesPrimaryAndDisablesAdvance() {
         let presentation = make(state: makeState(phase: .idle), countdown: 2)
         XCTAssertEqual(presentation.primary, .cancelCountdown)

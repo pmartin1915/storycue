@@ -81,6 +81,7 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max' \
             -configuration Debug \
             -parallel-testing-enabled NO \
+            -only-testing:StoryCueUITests/ScreenshotTests/testCaptureAppStoreScreenshots \
             -resultBundlePath "$RUNNER_TEMP/shots.xcresult" \
             STORYCUE_DUO_CONDITIONS="" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
@@ -177,6 +178,92 @@ jobs:
         with:
           name: asc-screenshots-6.9
           path: ${{ runner.temp }}/shots
+
+      - name: Run review ScreenshotTests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project StoryCue.xcodeproj \
+            -scheme StoryCueScreenshots \
+            -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max' \
+            -configuration Debug \
+            -parallel-testing-enabled NO \
+            -only-testing:StoryCueUITests/ScreenshotTests/testCaptureDarkScreenshots \
+            -only-testing:StoryCueUITests/ScreenshotTests/testCaptureAX5Screenshots \
+            -resultBundlePath "$RUNNER_TEMP/review.xcresult" \
+            STORYCUE_DUO_CONDITIONS="" \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+      - name: Export review attachments
+        continue-on-error: true
+        run: |
+          xcrun xcresulttool export attachments \
+            --path "$RUNNER_TEMP/review.xcresult" \
+            --output-path "$RUNNER_TEMP/review-raw"
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          import sys
+
+          runner_temp = os.environ["RUNNER_TEMP"]
+          raw = os.path.join(runner_temp, "review-raw")
+          manifest_path = os.path.join(raw, "manifest.json")
+          review = os.path.join(runner_temp, "review")
+          expected = [
+              "dark-01-decks", "dark-02-consent", "dark-03-recorder",
+              "ax5-01-decks", "ax5-02-consent", "ax5-03-recorder",
+          ]
+
+          try:
+              with open(manifest_path, encoding="utf-8") as handle:
+                  manifest = json.load(handle)
+          except Exception as error:
+              print(f"could not read manifest: {error}", file=sys.stderr)
+              sys.exit(1)
+
+          def iter_nodes(node):
+              if isinstance(node, dict):
+                  yield node
+                  for value in node.values():
+                      yield from iter_nodes(value)
+              elif isinstance(node, list):
+                  for value in node:
+                      yield from iter_nodes(value)
+
+          copied = {}
+          for entry in iter_nodes(manifest):
+              suggested = entry.get("suggestedHumanReadableName")
+              exported = entry.get("exportedFileName")
+              if not suggested or not exported:
+                  continue
+              name = next((n for n in expected if suggested.startswith(n)), None)
+              if name is None or name in copied:
+                  continue
+              source = os.path.join(raw, exported)
+              if not os.path.isfile(source):
+                  continue
+              os.makedirs(review, exist_ok=True)
+              destination = os.path.join(review, name + ".png")
+              shutil.copyfile(source, destination)
+              copied[name] = destination
+
+          if sorted(copied) != sorted(expected):
+              print("expected 6 review attachments, got:", sorted(copied), file=sys.stderr)
+              print("manifest.json:", json.dumps(manifest, indent=2)[:4000], file=sys.stderr)
+              sys.exit(1)
+          for name in sorted(copied):
+              print(f"{name} -> {copied[name]}")
+          PY
+
+      - name: Upload review screenshots artifact
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-screenshots
+          path: ${{ runner.temp }}/review
+          if-no-files-found: warn
 
       # Failure evidence: the xcresult carries XCTest's automatic failure screenshots.
       - name: Upload xcresult

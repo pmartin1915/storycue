@@ -15,16 +15,15 @@ struct DeckPickerView: View {
                     NavigationLink {
                         ConsentView(deck: deck, model: model)
                     } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(deck.title)
-                                .font(.title2)
-                            Text(UICopy.questionCount(deck.questions.count))
+                        DeckRowLabel(deckID: deck.id, title: deck.title) {
+                            Text(UICopy.deckTeaser(deck.id))
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(.vertical, 4)
                     }
-                    .accessibilityLabel("\(deck.title), \(UICopy.questionCount(deck.questions.count))")
+                    .accessibilityLabel(
+                        "\(deck.title), \(UICopy.deckTeaser(deck.id)), \(UICopy.questionCount(deck.questions.count))"
+                    )
                     .accessibilityIdentifier("deck.\(deck.id)")
                 }
             }

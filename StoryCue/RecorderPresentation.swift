@@ -1,5 +1,20 @@
 import Foundation
 
+enum RecordGlyph: Equatable {
+    case dot, square, spinner, cancel
+}
+
+extension RecorderPresentation.Primary {
+    var glyph: RecordGlyph {
+        switch self {
+        case .record, .resume, .unavailable: .dot
+        case .pause: .square
+        case .saving: .spinner
+        case .cancelCountdown: .cancel
+        }
+    }
+}
+
 /// Everything the recorder shows, derived from store state in one pure function so the
 /// rules are unit-tested without SwiftUI. No SwiftUI/UIKit imports here.
 struct RecorderPresentation: Equatable {

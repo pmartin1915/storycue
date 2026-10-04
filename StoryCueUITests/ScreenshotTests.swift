@@ -62,6 +62,50 @@ final class ScreenshotTests: XCTestCase {
         attachScreenshot(of: app, named: "05-session")
     }
 
+    func testCaptureDarkScreenshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-StoryCueDemo", "-StoryCueDark"]
+        app.launch()
+
+        let grandparentsDeck = app.descendants(matching: .any)["deck.grandparents"].firstMatch
+        guard waitForScreen(grandparentsDeck, named: "dark-01-decks (deck picker)") else { return }
+        attachScreenshot(of: app, named: "dark-01-decks")
+
+        grandparentsDeck.tap()
+        let consentConfirm = app.buttons["consentConfirm"].firstMatch
+        guard waitForScreen(consentConfirm, named: "dark-02-consent (Grandparents consent)") else { return }
+        attachScreenshot(of: app, named: "dark-02-consent")
+
+        consentConfirm.tap()
+        let recordButton = app.buttons["recordButton"].firstMatch
+        guard waitForScreen(recordButton, named: "dark-03-recorder (recorder, question 1)") else { return }
+        let ready = expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: recordButton)
+        wait(for: [ready], timeout: 10)
+        attachScreenshot(of: app, named: "dark-03-recorder")
+    }
+
+    func testCaptureAX5Screenshots() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-StoryCueDemo", "-StoryCueAX5"]
+        app.launch()
+
+        let grandparentsDeck = app.descendants(matching: .any)["deck.grandparents"].firstMatch
+        guard waitForScreen(grandparentsDeck, named: "ax5-01-decks (deck picker)") else { return }
+        attachScreenshot(of: app, named: "ax5-01-decks")
+
+        grandparentsDeck.tap()
+        let consentConfirm = app.buttons["consentConfirm"].firstMatch
+        guard waitForScreen(consentConfirm, named: "ax5-02-consent (Grandparents consent)") else { return }
+        attachScreenshot(of: app, named: "ax5-02-consent")
+
+        consentConfirm.tap()
+        let recordButton = app.buttons["recordButton"].firstMatch
+        guard waitForScreen(recordButton, named: "ax5-03-recorder (recorder, question 1)") else { return }
+        let ready = expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: recordButton)
+        wait(for: [ready], timeout: 10)
+        attachScreenshot(of: app, named: "ax5-03-recorder")
+    }
+
     /// Waits up to 10 s for the screen's anchor element and fails naming the screen.
     private func waitForScreen(_ element: XCUIElement, named screen: String) -> Bool {
         guard element.waitForExistence(timeout: 10) else {
