@@ -23,3 +23,10 @@ One line each: idea, why deferred, where it applies. Sweep at session start.
 - 2026-10-02 (S2b-A Gemini interim review, minor) `Library.finish`'s nothing-kept branch drops ledger entries even when a `try? removeItem` failed, so that `.mov` becomes invisible (same class as the bare-file gap above); and `SessionIndex.save` leaves a stray `session-index.*.tmp` if `replaceItemAt` throws. Deferred: both leak bytes, neither loses a recording. Fix together with the launch bare-file sweep.
 - 2026-10-03 (S5 device pass) no in-app playback -- RESOLVED same day: Perry wants it in 1.0, now S2c in STATE. Also: Done from the recorder lands on the deck list, not the consent card (ConsentView comment says otherwise) -- fix the comment or the navigation.
 - 2026-10-03 (S5) Sol S2a finding 3 did NOT reproduce on device: after deny -> Open Settings -> grant -> return, the recorder recovered with a live preview. No code change needed unless a later device run shows the stale card.
+
+- 2026-10-04 (PR #8 Sonnet review, lows, deferred to avoid another CI round; applies to `StoryCue/Library.swift`):
+  - `removeFiles` still calls `removeFile` on an `.unreadable` stat; if removal succeeds the ID reads "not gone", so `discard` aborts and a recovered clip with no file stays listed. Fix: skip removal on `.unreadable`.
+  - `deleteUnchecked` can remove some files then abort on a survivor, leaving the record with `.saved` segments whose files are gone (ledger entries kept, nothing orphaned).
+  - A `discard` fall-through `deleteUnchecked` that aborts leaves an all-unkept record the UI never shows (file still referenced; the sweep retries).
+  - `testDeleteAbortsWhenStatFails` lets the real removal succeed and doesn't assert the file; the throwing-remover tests cover the survive case.
+  - Exporter still takes the two-state `attributesFileSize` (read-only path, never deletes).
