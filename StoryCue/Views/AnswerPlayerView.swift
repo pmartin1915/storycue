@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import AVKit
 import SwiftUI
 
 /// The answer the full-screen player is playing, identified by its question. `id` is the
