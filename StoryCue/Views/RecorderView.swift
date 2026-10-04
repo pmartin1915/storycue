@@ -6,6 +6,7 @@ struct RecorderView: View {
     let model: AppModel
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var countdown: Int?
     @State private var countdownTask: Task<Void, Never>?
 
@@ -48,6 +49,10 @@ struct RecorderView: View {
                 countdownOverlay(countdownText)
             }
         }
+        .sensoryFeedback(.impact(weight: .medium), trigger: presentation.primary) { old, new in
+            (old == .pause) != (new == .pause)
+        }
+        .sensoryFeedback(.selection, trigger: store.state.questionIndex)
         .task { store.startTicker() }
         .onDisappear { cancelCountdown() }
         .navigationBarBackButtonHidden(true)
@@ -81,8 +86,8 @@ struct RecorderView: View {
         if model.isDemo {
             LinearGradient(
                 colors: [
-                    Color(red: 0.20, green: 0.13, blue: 0.09),
-                    Color(red: 0.06, green: 0.04, blue: 0.03),
+                    DesignTokens.demoBackdropTop,
+                    DesignTokens.demoBackdropBottom,
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -109,10 +114,12 @@ struct RecorderView: View {
                 .foregroundStyle(.white.opacity(0.85))
             Text(store.currentQuestion.text)
                 .font(.largeTitle.bold())
+                .fontDesign(DesignTokens.questionFontDesign)
                 .foregroundStyle(.white)
             if let next = store.nextQuestionPreview {
                 Text(next.text)
                     .font(.callout)
+                    .fontDesign(DesignTokens.questionFontDesign)
                     .foregroundStyle(.white.opacity(0.85))
             }
         }
@@ -121,7 +128,7 @@ struct RecorderView: View {
         // Translucent black backing: white text stays ≥7:1 even over a pure-white feed
         // (70% black over white ≈ 8.5:1; 60% was only ≈ 5.7:1). Secondary lines use opaque-ish white, not .secondary, which
         // is translucent gray and drops below 3:1 over a bright feed.
-        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+        .background(DesignTokens.overCameraFill, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.card))
     }
 
     // MARK: - Timer
@@ -139,7 +146,7 @@ struct RecorderView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(.black.opacity(0.7), in: Capsule())
+            .background(DesignTokens.overCameraFill, in: Capsule())
         }
     }
 
@@ -165,22 +172,37 @@ struct RecorderView: View {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding()
-            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+            .background(DesignTokens.overCameraFill, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.card))
     }
 
     // MARK: - Controls
 
+    @ViewBuilder
     private var controlsRow: some View {
-        HStack(spacing: 16) {
-            primaryButton
-            advanceButton
+        if dynamicTypeSize.isAccessibilitySize {
+            // Side by side, no spacer column: stacking cost the question card most of its
+            // height at AX5 (review screenshot ax5-03-recorder). Control labels cap at AX2;
+            // the question above still scales fully.
+            HStack(spacing: DesignTokens.Spacing.l) {
+                primaryButton
+                advanceButton
+            }
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        } else {
+            HStack(spacing: DesignTokens.Spacing.l) {
+                Color.clear
+                    .frame(maxWidth: .infinity)
+                primaryButton
+                    .frame(maxWidth: .infinity)
+                advanceButton
+                    .frame(maxWidth: .infinity)
+            }
         }
-        .frame(maxWidth: .infinity)
     }
 
     private var primaryButton: some View {
         let p = presentation.primary
-        return Button(primaryLabel(p)) {
+        return RecordButton(primary: p, label: primaryLabel(p)) {
             switch p {
             case .record, .resume:
                 startCountdown()
@@ -192,11 +214,6 @@ struct RecorderView: View {
                 break   // disabled
             }
         }
-        .font(.title2)
-        .frame(minWidth: 44, minHeight: 44)
-        .disabled(p == .saving || p == .unavailable)
-        .accessibilityLabel(primaryLabel(p))
-        .accessibilityIdentifier("recordButton")
     }
 
     private func primaryLabel(_ p: RecorderPresentation.Primary) -> String {
@@ -212,7 +229,7 @@ struct RecorderView: View {
 
     private var advanceButton: some View {
         let a = presentation.advance
-        return Button(advanceLabel(a)) {
+        return Button {
             switch a {
             case .skip:
                 store.send(.tapSkip)
@@ -224,9 +241,18 @@ struct RecorderView: View {
             case .disabled:
                 break
             }
+        } label: {
+            Text(advanceLabel(a))
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, DesignTokens.Spacing.m)
+                .padding(.vertical, DesignTokens.Spacing.s)
+                .frame(minHeight: 44)
+                .background(DesignTokens.overCameraFill, in: Capsule())
         }
-        .font(.title2)
-        .frame(minWidth: 44, minHeight: 44)
+        .buttonStyle(.plain)
         .disabled(a == .disabled)
         .accessibilityLabel(advanceLabel(a))
     }
@@ -284,7 +310,7 @@ struct RecorderView: View {
             .font(.largeTitle.bold().monospacedDigit())
             .foregroundStyle(.white)
             .padding(32)
-            .background(.black.opacity(0.7), in: Circle())
+            .background(DesignTokens.overCameraFill, in: Circle())
     }
 
     // MARK: - Blocking overlay

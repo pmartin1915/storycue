@@ -26,6 +26,22 @@ final class DeckDataTests: XCTestCase {
         XCTAssertTrue(Deck.v1Decks.allSatisfy(\.isIncluded))
     }
 
+    func testEveryDeckHasTeaser() {
+        for deck in Deck.v1Decks {
+            let teaser = UICopy.deckTeaser(deck.id)
+            XCTAssertFalse(teaser.isEmpty, "\(deck.id) needs a teaser")
+            XCTAssertLessThanOrEqual(teaser.count, 60, "\(deck.id) teaser exceeds 60 characters")
+            XCTAssertFalse(teaser.hasSuffix("."), "\(deck.id) teaser must not end in a period")
+        }
+    }
+
+    func testDeckSymbolsAreDistinct() {
+        let symbols = Deck.v1Decks.map { DesignTokens.deckSymbol($0.id) }
+        let defaultSymbol = DesignTokens.deckSymbol("unknown-deck")
+        XCTAssertEqual(Set(symbols).count, 5)
+        XCTAssertTrue(symbols.allSatisfy { $0 != defaultSymbol })
+    }
+
     func testEachV1DeckHasBetweenEightAndTwelveQuestions() {
         for deck in Deck.v1Decks {
             XCTAssertTrue(

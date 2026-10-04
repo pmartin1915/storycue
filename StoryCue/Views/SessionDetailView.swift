@@ -48,16 +48,23 @@ struct SessionDetailView: View {
                     clipRow(clip, record: record, isActive: isActive)
                 }
             } header: {
-                if showsCompletion, record.manifest.count > 0 {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(UICopy.completionTitle(record.manifest.count))
-                            .font(.title3.bold())
-                        Text(UICopy.completionBody)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                if showsCompletion {
+                    if record.manifest.count > 0 {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(UICopy.completionTitle(record.manifest.count))
+                                .font(.title3.bold())
+                            Text(UICopy.completionBody)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .textCase(nil)   // inset-grouped headers uppercase by default
+                        .foregroundStyle(.primary)
                     }
-                    .textCase(nil)   // inset-grouped headers uppercase by default
-                    .foregroundStyle(.primary)
+                } else {
+                    Text(UICopy.sessionSummary(record.startedAt, count: record.manifest.count))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
                 }
             }
             Section {
@@ -146,6 +153,7 @@ struct SessionDetailView: View {
                         .foregroundStyle(.secondary)
                     Text(position.text)
                         .font(.body)
+                        .fontDesign(DesignTokens.questionFontDesign)
                 } else {
                     Text(UICopy.unknownQuestion)
                         .font(.body)

@@ -18,11 +18,17 @@ struct ConsentView: View {
                     .font(.body)
 
                 // The read-aloud line, in a quoted callout.
-                Text(UICopy.readAloudCallout)
-                    .font(.callout)
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                HStack(alignment: .firstTextBaseline) {
+                    Image(systemName: "quote.opening")
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
+                    Text(UICopy.readAloudCallout)
+                        .font(.title3)
+                        .fontDesign(DesignTokens.questionFontDesign)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.card))
 
                 Text(UICopy.privacyNote)
                     .font(.footnote)
@@ -33,22 +39,27 @@ struct ConsentView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-
-                Button(UICopy.consentConfirm) {
-                    isBeginning = true
-                    Task {
-                        await model.beginSession(deck: deck)
-                        // Done/Finish pops back to this screen, so the button must re-enable.
-                        isBeginning = false
-                    }
-                }
-                .font(.title2)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .disabled(isBeginning || !model.library.isLoaded)
-                .accessibilityLabel(UICopy.consentConfirm)
-                .accessibilityIdentifier("consentConfirm")
             }
             .padding()
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                isBeginning = true
+                Task {
+                    await model.beginSession(deck: deck)
+                    // Done/Finish pops back to this screen, so the button must re-enable.
+                    isBeginning = false
+                }
+            } label: {
+                Text(UICopy.consentConfirm)
+                    .frame(maxWidth: .infinity)
+            }
+            .primaryAction()
+            .disabled(isBeginning || !model.library.isLoaded)
+            .accessibilityLabel(UICopy.consentConfirm)
+            .accessibilityIdentifier("consentConfirm")
+            .padding(DesignTokens.Spacing.l)
+            .background(.bar)
         }
         .navigationTitle(deck.title)
         .navigationBarTitleDisplayMode(.inline)

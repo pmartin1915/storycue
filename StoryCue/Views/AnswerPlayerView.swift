@@ -82,7 +82,7 @@ struct AnswerPlayerView: View {
             .lineLimit(captionExpanded ? nil : 1)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.card))
             .environment(\.colorScheme, .dark)
     }
 
