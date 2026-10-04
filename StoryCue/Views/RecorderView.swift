@@ -9,6 +9,11 @@ struct RecorderView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var countdown: Int?
     @State private var countdownTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Where the question card sits. Not persisted: RootView gives each session a fresh
+    /// RecorderView, so every session starts with the card at the top.
+    @State private var questionAtBottom = false
+    @State private var dragOffset: CGFloat = 0
 
     private var store: SessionStore { session.store }
 
@@ -27,13 +32,11 @@ struct RecorderView: View {
             previewBackdrop
 
             VStack(spacing: 16) {
-                // The question scrolls; the controls below never do. At the largest
-                // accessibility text sizes on a 667 pt screen the panel alone can exceed the
-                // height, and a Spacer would let it push Record/Next off screen.
-                ScrollView {
-                    questionPanel
-                }
-                .scrollBounceBehavior(.basedOnSize)
+                // The question card sits at the top or just above the controls (the user
+                // drags it off the subject's face); the controls never move.
+                if questionAtBottom { Spacer(minLength: 0) }
+                questionArea
+                if !questionAtBottom { Spacer(minLength: 0) }
                 timerRow
                 bannerRow
                 controlsRow
@@ -53,6 +56,7 @@ struct RecorderView: View {
             (old == .pause) != (new == .pause)
         }
         .sensoryFeedback(.selection, trigger: store.state.questionIndex)
+        .sensoryFeedback(.selection, trigger: questionAtBottom)
         .task { store.startTicker() }
         .onDisappear { cancelCountdown() }
         .navigationBarBackButtonHidden(true)
@@ -107,8 +111,64 @@ struct RecorderView: View {
 
     // MARK: - Question panel
 
+    /// The card at its natural height when it fits, so it can sit at either end; in a
+    /// ScrollView when it doesn't (largest accessibility sizes on a small screen), so it can
+    /// never push Record/Next off screen. Only the fitting card takes the drag: inside the
+    /// ScrollView a drag would fight scrolling, so there the handle button moves it.
+    private var questionArea: some View {
+        ViewThatFits(in: .vertical) {
+            questionPanel
+                .offset(y: dragOffset)
+                .gesture(questionDrag)
+            ScrollView {
+                questionPanel
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .layoutPriority(1)
+    }
+
+    /// Follows the finger toward the other end only, then snaps to the nearer end.
+    private var questionDrag: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                let dy = value.translation.height
+                dragOffset = questionAtBottom ? min(0, dy) : max(0, dy)
+            }
+            .onEnded { value in
+                let dy = value.predictedEndTranslation.height
+                let toBottom = questionAtBottom ? dy > -Self.questionSnapDistance : dy > Self.questionSnapDistance
+                withAnimation(reduceMotion ? nil : DesignTokens.Motion.morph) {
+                    questionAtBottom = toBottom
+                    dragOffset = 0
+                }
+            }
+    }
+
+    private static let questionSnapDistance: CGFloat = 60
+
+    private func toggleQuestionPosition() {
+        withAnimation(reduceMotion ? nil : DesignTokens.Motion.morph) {
+            questionAtBottom.toggle()
+        }
+    }
+
+    private var questionHandle: some View {
+        Button(action: toggleQuestionPosition) {
+            Capsule()
+                .fill(.white.opacity(0.6))
+                .frame(width: 36, height: 5)
+                .frame(maxWidth: .infinity, minHeight: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(questionAtBottom ? UICopy.moveQuestionToTop : UICopy.moveQuestionToBottom)
+        .accessibilityIdentifier("questionHandle")
+    }
+
     private var questionPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
+            questionHandle
             Text(UICopy.questionCounter(store.state.questionIndex, store.state.deck.questions.count))
                 .font(.footnote)
                 .foregroundStyle(.white.opacity(0.85))
@@ -129,6 +189,8 @@ struct RecorderView: View {
         // (70% black over white ≈ 8.5:1; 60% was only ≈ 5.7:1). Secondary lines use opaque-ish white, not .secondary, which
         // is translucent gray and drops below 3:1 over a bright feed.
         .background(DesignTokens.overCameraFill, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.card))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("questionPanel")
     }
 
     // MARK: - Timer
