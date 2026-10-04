@@ -180,10 +180,14 @@ struct RecorderView: View {
     @ViewBuilder
     private var controlsRow: some View {
         if dynamicTypeSize.isAccessibilitySize {
-            VStack(spacing: DesignTokens.Spacing.m) {
+            // Side by side, no spacer column: stacking cost the question card most of its
+            // height at AX5 (review screenshot ax5-03-recorder). Control labels cap at AX2;
+            // the question above still scales fully.
+            HStack(spacing: DesignTokens.Spacing.l) {
                 primaryButton
                 advanceButton
             }
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         } else {
             HStack(spacing: DesignTokens.Spacing.l) {
                 Color.clear
