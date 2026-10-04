@@ -129,4 +129,13 @@ enum UICopy {
         n == 1 ? "1 part couldn't be read and was left out." : "\(n) parts couldn't be read and were left out."
     }
     static let flaggedNote = "Part of this export may be incomplete."
+
+    // MARK: - S2c: in-app playback, completion
+
+    static let playAnswer = "Play answer"
+    static let playbackUnavailable = "This answer can't be played. The file may be damaged or missing."
+    static func completionTitle(_ n: Int) -> String {
+        n == 1 ? "You recorded 1 answer" : "You recorded \(n) answers"
+    }
+    static let completionBody = "They're saved on this iPhone. Tap play to watch one."
 }

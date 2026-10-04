@@ -5,11 +5,16 @@ import SwiftUI
 struct SessionDetailView: View {
     let sessionID: UUID
     let model: AppModel
+    /// True when this screen was opened by "Done" right after recording (S2c): shows the
+    /// one-line completion header and fires a one-time success haptic.
+    var showsCompletion: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @State private var exportModel: ExportModel?
     @State private var showDeleteSessionConfirm = false
     @State private var pendingClipDelete: RecoveredClip?
+    @State private var playing: PlayableAnswer?
+    @State private var didAppear = false
 
     private var library: Library { model.library }
 
@@ -25,6 +30,9 @@ struct SessionDetailView: View {
         }
         .navigationTitle(library.record(id: sessionID)?.deckTitle ?? UICopy.libraryTitle)
         .navigationBarTitleDisplayMode(.inline)
+        // Only the post-recording screen celebrates; opening a session from Recordings doesn't.
+        .onAppear { if showsCompletion { didAppear = true } }
+        .sensoryFeedback(.success, trigger: didAppear)
     }
 
     private func isShown(_ clip: Clip) -> Bool {
@@ -38,6 +46,16 @@ struct SessionDetailView: View {
             Section {
                 ForEach(shownClips, id: \.questionID) { clip in
                     clipRow(clip, record: record, isActive: isActive)
+                }
+            } header: {
+                if showsCompletion, record.manifest.count > 0 {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(UICopy.completionTitle(record.manifest.count))
+                            .font(.title3.bold())
+                        Text(UICopy.completionBody)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             Section {
@@ -99,6 +117,12 @@ struct SessionDetailView: View {
                 Task { await library.discard(clip) }
             }
         }
+        .fullScreenCover(item: $playing) { answer in
+            AnswerPlayerView(
+                sources: playbackSources(for: record, questionID: answer.questionID, in: model.segmentDirectory),
+                caption: record.questionPosition(for: answer.questionID)?.text ?? UICopy.unknownQuestion
+            )
+        }
     }
 
     private var canExportNow: Bool {
@@ -109,26 +133,42 @@ struct SessionDetailView: View {
         let position = record.questionPosition(for: clip.questionID)
         let hasKeptFailure = clip.segments.contains { $0.outcome == .failed(kept: true) }
         let undecided = clip.segments.filter { $0.outcome == nil }
-        return VStack(alignment: .leading, spacing: 8) {
-            if let position {
-                Text(UICopy.questionCounter(position.index, position.count))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text(position.text)
-                    .font(.body)
-            } else {
-                Text(UICopy.unknownQuestion)
-                    .font(.body)
-            }
-            if hasKeptFailure {
-                Text(UICopy.mayBeIncomplete)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if !isActive {
-                ForEach(undecided, id: \.id) { segment in
-                    undecidedControls(RecoveredClip(sessionID: sessionID, segment: segment))
+        // The camera owns the audio session while its session is active, so a still-open
+        // session's rows get no play button. Sources come from the export manifest rules.
+        let sources = playbackSources(for: record, questionID: clip.questionID, in: model.segmentDirectory)
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                if let position {
+                    Text(UICopy.questionCounter(position.index, position.count))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Text(position.text)
+                        .font(.body)
+                } else {
+                    Text(UICopy.unknownQuestion)
+                        .font(.body)
                 }
+                if hasKeptFailure {
+                    Text(UICopy.mayBeIncomplete)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if !isActive {
+                    ForEach(undecided, id: \.id) { segment in
+                        undecidedControls(RecoveredClip(sessionID: sessionID, segment: segment))
+                    }
+                }
+            }
+            if !sources.isEmpty && !isActive {
+                Button {
+                    playing = PlayableAnswer(questionID: clip.questionID)
+                } label: {
+                    Image(systemName: "play.circle.fill")
+                        .font(.title)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(UICopy.playAnswer)
             }
         }
         .padding(.vertical, 4)

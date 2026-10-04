@@ -18,6 +18,17 @@ func exportManifest(for state: SessionState) -> [ClipManifestEntry] {
     exportManifest(for: state.clips)
 }
 
+/// The segment files in-app playback of one answer reads: the same keep rules as export
+/// (S2c spec §2). Built from `SegmentFiles`, never from `SegmentOutcome.saved(url:)` —
+/// the manifest entry's segment IDs are the canonical file identity. `[]` when the
+/// question has no manifest entry.
+func playbackSources(for record: SessionRecord, questionID: String, in directory: URL) -> [URL] {
+    guard let entry = exportManifest(for: record.clips).first(where: { $0.questionID == questionID }) else {
+        return []
+    }
+    return entry.segments.map { SegmentFiles.url(for: $0.id, in: directory) }
+}
+
 /// Same rules over a bare clip list (the session library stores clips, not a SessionState).
 func exportManifest(for clips: [Clip]) -> [ClipManifestEntry] {
     clips.compactMap { clip in

@@ -20,6 +20,9 @@ struct RootView: View {
                             .id(ObjectIdentifier(active.store))
                     }
                 }
+                .navigationDestination(item: $model.finishedSessionID) { id in
+                    SessionDetailView(sessionID: id, model: model, showsCompletion: true)
+                }
         }
     }
 }
