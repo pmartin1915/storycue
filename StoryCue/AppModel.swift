@@ -34,6 +34,30 @@ final class AppModel {
         ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value
     }
 
+    /// attributesOfItem as a `FileState`: `.missing` only on a positive "no such file" error,
+    /// any other error (or no size attribute) is `.unreadable`.
+    nonisolated static let attributesFileState: @Sendable (URL) -> FileState = { url in
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard let size = (attributes[.size] as? NSNumber)?.int64Value else { return .unreadable }
+            return .present(size)
+        } catch {
+            return AppModel.isNoSuchFile(error as NSError) ? .missing : .unreadable
+        }
+    }
+
+    nonisolated private static func isNoSuchFile(_ error: NSError) -> Bool {
+        if error.domain == NSCocoaErrorDomain,
+           error.code == NSFileReadNoSuchFileError || error.code == NSFileNoSuchFileError {
+            return true
+        }
+        if error.domain == NSPOSIXErrorDomain, error.code == Int(ENOENT) { return true }
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+            return underlying.domain == NSPOSIXErrorDomain && underlying.code == Int(ENOENT)
+        }
+        return false
+    }
+
     /// The volume's "important usage" available capacity for `url`, nil on error.
     nonisolated static func importantUsageCapacity(at url: URL) -> Int64? {
         let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
@@ -46,7 +70,7 @@ final class AppModel {
         makeBackground: @escaping @MainActor () -> any BackgroundTaskRunner,
         exporter: Exporter? = nil,
         availableCapacity: @escaping @Sendable () -> Int64? = { nil },
-        fileSize: @escaping @Sendable (URL) -> Int64? = AppModel.attributesFileSize
+        fileState: @escaping @Sendable (URL) -> FileState = AppModel.attributesFileState
     ) {
         let ledger = SegmentLedger(directory: segmentDirectory)
         let resolvedExporter = exporter ?? Exporter(
@@ -66,7 +90,7 @@ final class AppModel {
             ledger: ledger,
             exporter: resolvedExporter,
             availableCapacity: availableCapacity,
-            fileSize: fileSize
+            fileState: fileState
         )
         self.makeCapture = makeCapture
         self.makeBackground = makeBackground
@@ -95,7 +119,10 @@ final class AppModel {
             // that exist, so delete's "is it gone" check still works) and free space, so the
             // Recordings storage footer in the screenshot reads like a real phone.
             availableCapacity: { 96_000_000_000 },
-            fileSize: { url in AppModel.attributesFileSize(url).map { _ in 46_000_000 } }
+            fileState: { url in
+                let state = AppModel.attributesFileState(url)
+                return state.size == nil ? state : .present(46_000_000)
+            }
         )
 
         // Fixed recent dates at local noon so the Recordings list reads like a real week.

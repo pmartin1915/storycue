@@ -8,6 +8,19 @@ struct StorageStatus: Equatable, Sendable {
     var isLow: Bool { availableBytes.map { $0 < Self.lowSpaceThreshold } ?? false }
 }
 
+/// What a stat of a segment file said. `unreadable` (the stat threw for any reason other than
+/// "no such file") means "can't tell": never relabel or delete on it, never treat it as gone.
+enum FileState: Equatable, Sendable {
+    case missing
+    case present(Int64)
+    case unreadable
+
+    var size: Int64? {
+        if case let .present(size) = self { return size }
+        return nil
+    }
+}
+
 struct RecoveredClip: Equatable, Identifiable, Sendable {
     let sessionID: UUID
     let segment: Segment            // outcome == nil
@@ -17,7 +30,8 @@ struct RecoveredClip: Equatable, Identifiable, Sendable {
 /// The session library: the index is the source of truth, the ledger its recovery backstop
 /// (S2b spec decision 1). Every mutation updates `sessions` synchronously on the main actor,
 /// then enqueues a serial, ordered index save. The only code that deletes a segment file is
-/// `delete`, `discard` and the nothing-kept branch of `finish`; the export path never does.
+/// `delete`, `discard`, `finish` (unkept failures only) and the launch sweep (provably-unkept
+/// files only, see docs/S2B-STORAGE-SWEEP-SPEC.md); the export path never does.
 @MainActor
 @Observable
 final class Library {
@@ -46,7 +60,8 @@ final class Library {
     private let ledger: SegmentLedger
     private let exporter: Exporter
     private let availableCapacity: @Sendable () -> Int64?
-    private let fileSize: @Sendable (URL) -> Int64?
+    private let fileState: @Sendable (URL) -> FileState
+    private let removeFile: @Sendable (URL) throws -> Void
 
     private var closedSessionIDs: Set<UUID> = []
     private var deletingSessionIDs: Set<UUID> = []
@@ -60,14 +75,16 @@ final class Library {
         ledger: SegmentLedger,
         exporter: Exporter,
         availableCapacity: @escaping @Sendable () -> Int64?,
-        fileSize: @escaping @Sendable (URL) -> Int64?
+        fileState: @escaping @Sendable (URL) -> FileState,
+        removeFile: @escaping @Sendable (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }
     ) {
         self.segmentDirectory = segmentDirectory
         self.index = index
         self.ledger = ledger
         self.exporter = exporter
         self.availableCapacity = availableCapacity
-        self.fileSize = fileSize
+        self.fileState = fileState
+        self.removeFile = removeFile
     }
 
     // MARK: - Launch reconciliation (decision 4)
@@ -89,6 +106,7 @@ final class Library {
         var records: [SessionRecord] = []
         var changed = false
         var skipReconciliation = false
+        var ledgerReadable = false
         do {
             records = try await index.load()
         } catch is DecodingError {
@@ -114,6 +132,7 @@ final class Library {
             }
 
             // 4. Undecided segments: bytes on disk stay recovered, no bytes -> unkept failure.
+            //    An unreadable stat is not "no bytes": the segment stays undecided.
             var emptyIDs: [UUID] = []
             for i in records.indices {
                 for c in records[i].clips.indices {
@@ -121,7 +140,9 @@ final class Library {
                         let segment = records[i].clips[c].segments[s]
                         guard segment.outcome == nil else { continue }
                         let url = SegmentFiles.url(for: segment.id, in: segmentDirectory)
-                        if (fileSize(url) ?? 0) > 0 { continue }
+                        let state = fileState(url)
+                        if state == .unreadable { continue }
+                        if let size = state.size, size > 0 { continue }
                         records[i].clips[c].segments[s].outcome = .failed(kept: false)
                         emptyIDs.append(segment.id)
                         changed = true
@@ -140,11 +161,22 @@ final class Library {
                 }
             }
             if let entries = try? await ledger.allEntries() {
+                ledgerReadable = true
                 let synthesized = synthesizeRecords(from: entries, excluding: knownIDs)
                 if !synthesized.isEmpty {
                     records.append(contentsOf: synthesized)
                     changed = true
                 }
+            }
+        }
+
+        // Storage sweep (sweep spec decision 5). Needs proof: both the index and the ledger were
+        // read, and no recording is live. Synchronous up to its single ledger cleanup await.
+        if !skipReconciliation, ledgerReadable, activeSessionID == nil {
+            let outcome = sweepStorage(records: &records)
+            if outcome.adopted { changed = true }
+            if !outcome.removedIDs.isEmpty {
+                try? await ledger.remove(segmentIDs: outcome.removedIDs)
             }
         }
 
@@ -161,7 +193,7 @@ final class Library {
         var groups: [DayGroup: [(entry: SegmentLedgerEntry, deck: Deck)]] = [:]
         for entry in entries where !knownIDs.contains(entry.segmentID) {
             let url = SegmentFiles.url(for: entry.segmentID, in: segmentDirectory)
-            guard (fileSize(url) ?? 0) > 0 else { continue }
+            guard let size = fileState(url).size, size > 0 else { continue }
             guard let deck = Deck.v1Decks.first(where: { deck in
                 deck.questions.contains { $0.id == entry.questionID }
             }) else { continue }
@@ -204,6 +236,117 @@ final class Library {
             ))
         }
         return result
+    }
+
+    // MARK: - Storage sweep (docs/S2B-STORAGE-SWEEP-SPEC.md)
+
+    /// Deletes each segment's .mov and returns the IDs whose file is verifiably gone: already
+    /// `.missing`, or removed without error and `.missing` afterwards. A failed removal or an
+    /// unreadable stat is a survivor, so its ledger entry (and its record) stay.
+    private func removeFiles(for ids: [UUID]) -> Set<UUID> {
+        var gone: Set<UUID> = []
+        for id in ids {
+            let url = SegmentFiles.url(for: id, in: segmentDirectory)
+            if fileState(url) == .missing {
+                gone.insert(id)
+                continue
+            }
+            do {
+                try removeFile(url)
+            } catch {
+                continue
+            }
+            if fileState(url) == .missing { gone.insert(id) }
+        }
+        return gone
+    }
+
+    /// IDs some reference still needs: any outcome other than `.failed(kept: false)`. A file is
+    /// deleted only when every reference to its ID is an unkept failure.
+    private static func protectedIDs(in records: [SessionRecord]) -> Set<UUID> {
+        var result: Set<UUID> = []
+        for record in records {
+            for clip in record.clips {
+                for segment in clip.segments where !isUnkeptFailure(segment.outcome) {
+                    result.insert(segment.id)
+                }
+            }
+        }
+        return result
+    }
+
+    /// Deletes only what is provably not part of a kept session: the file of a
+    /// `.failed(kept: false)` segment, an unreferenced zero-byte `<UUID>.mov`, and a stray
+    /// atomic-save temp file. An unreferenced `.mov` with bytes is adopted into one synthesized
+    /// record for the user to keep or discard, never deleted.
+    private func sweepStorage(records: inout [SessionRecord]) -> (removedIDs: Set<UUID>, adopted: Bool) {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: segmentDirectory.path)) ?? []
+
+        for name in names where Self.isStrayTemporaryName(name) {
+            try? FileManager.default.removeItem(at: segmentDirectory.appendingPathComponent(name))
+        }
+
+        let protected = Self.protectedIDs(in: records)
+        var referenced: Set<UUID> = []
+        var unkept: [UUID] = []
+        for record in records {
+            for clip in record.clips {
+                for segment in clip.segments {
+                    referenced.insert(segment.id)
+                    // Only a file that exists is swept (a missing one has nothing to delete), and
+                    // never one another reference still needs.
+                    if Self.isUnkeptFailure(segment.outcome),
+                       !protected.contains(segment.id),
+                       fileState(SegmentFiles.url(for: segment.id, in: segmentDirectory)) != .missing {
+                        unkept.append(segment.id)
+                    }
+                }
+            }
+        }
+        var removed = removeFiles(for: unkept)
+
+        var emptyBare: [UUID] = []
+        var adoptable: [(id: UUID, createdAt: Date)] = []
+        for name in names {
+            let url = segmentDirectory.appendingPathComponent(name)
+            guard let id = SegmentFiles.segmentID(from: url), !referenced.contains(id) else { continue }
+            guard let size = fileState(url).size else { continue }     // can't tell: leave it alone
+            if size == 0 {
+                emptyBare.append(id)
+            } else {
+                let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+                adoptable.append((id, (attributes?[.creationDate] as? Date) ?? Date()))
+            }
+        }
+        removed.formUnion(removeFiles(for: emptyBare))
+
+        guard !adoptable.isEmpty else { return (removed, false) }
+        adoptable.sort { $0.createdAt < $1.createdAt }
+        let segments = adoptable.map {
+            Segment(id: $0.id, questionID: Self.unknownQuestionID, startedAt: $0.createdAt, endReason: nil, outcome: nil)
+        }
+        records.append(SessionRecord(
+            id: UUID(),
+            deckID: Self.unsortedDeckID,
+            deckTitle: UICopy.unsortedRecordingsTitle,
+            startedAt: adoptable[0].createdAt,
+            clips: [Clip(questionID: Self.unknownQuestionID, segments: segments)],
+            isFinished: true
+        ))
+        return (removed, true)
+    }
+
+    private static let unknownQuestionID = "unknown"
+    private static let unsortedDeckID = "unsorted"
+
+    /// Exactly `session-index.<UUID>.tmp` / `segment-ledger.<UUID>.tmp`; nothing else.
+    private static func isStrayTemporaryName(_ name: String) -> Bool {
+        guard name.hasSuffix(".tmp") else { return false }
+        let stem = String(name.dropLast(".tmp".count))
+        for prefix in ["session-index.", "segment-ledger."] where stem.hasPrefix(prefix) {
+            return UUID(uuidString: String(stem.dropFirst(prefix.count))) != nil
+        }
+        return false
     }
 
     // MARK: - Checkpoint / finish (decision 3)
@@ -260,7 +403,16 @@ final class Library {
                 ))
             }
             enqueueSave()
+            // Unkept failures inside a kept session: their files are unusable and excluded
+            // from export. A surviving file keeps its ledger entry; a file another reference
+            // still needs is not touched.
+            let protected = Self.protectedIDs(in: sessions)
+            let unkept = segments
+                .filter { Self.isUnkeptFailure($0.outcome) && !protected.contains($0.id) }
+                .map(\.id)
+            let gone = removeFiles(for: unkept)
             refreshStorage()
+            if !gone.isEmpty { try? await ledger.remove(segmentIDs: gone) }
             return
         }
 
@@ -268,14 +420,13 @@ final class Library {
         // judged these segments unusable.
         sessions.removeAll { $0.id == sessionID }
         enqueueSave()
-        var segmentIDs: Set<UUID> = []
-        for segment in segments {
-            segmentIDs.insert(segment.id)
-            if Self.isUnkeptFailure(segment.outcome) {
-                try? FileManager.default.removeItem(at: SegmentFiles.url(for: segment.id, in: segmentDirectory))
-            }
-        }
-        try? await ledger.remove(segmentIDs: segmentIDs)
+        // Only a verified-gone file loses its ledger entry; a survivor stays recoverable. A file
+        // another record still needs is not touched.
+        let protected = Self.protectedIDs(in: sessions)
+        let gone = removeFiles(for: segments
+            .filter { Self.isUnkeptFailure($0.outcome) && !protected.contains($0.id) }
+            .map(\.id))
+        try? await ledger.remove(segmentIDs: gone)
         refreshStorage()
     }
 
@@ -316,14 +467,20 @@ final class Library {
 
     func discard(_ clip: RecoveredClip) async {
         guard let position = canDecide(clip) else { return }
-        let url = SegmentFiles.url(for: clip.segment.id, in: segmentDirectory)
-        try? FileManager.default.removeItem(at: url)
-        // A file that is still there must stay visible: abort rather than hide it.
-        guard fileSize(url) == nil else { return }
+        let id = clip.segment.id
+        // Another reference that still needs the file keeps it (and its ledger entry); only this
+        // reference becomes an unkept failure.
+        var after = sessions
+        after[position.session].clips[position.clip].segments[position.segment].outcome = .failed(kept: false)
+        let shared = Self.protectedIDs(in: after).contains(id)
+        // A file that is still there (or can't be stat'd) must stay visible: abort rather than hide it.
+        if !shared {
+            guard removeFiles(for: [id]).contains(id) else { return }
+        }
         sessions[position.session].clips[position.clip].segments[position.segment].outcome = .failed(kept: false)
         enqueueSave()
         refreshStorage()
-        try? await ledger.remove(segmentIDs: [clip.segment.id])
+        if !shared { try? await ledger.remove(segmentIDs: [id]) }
 
         guard let record = record(id: clip.sessionID) else { return }
         var hasKeepWorthy = false
@@ -370,15 +527,16 @@ final class Library {
         for clip in record.clips {
             for segment in clip.segments { segmentIDs.append(segment.id) }
         }
-        for id in segmentIDs {
-            try? FileManager.default.removeItem(at: SegmentFiles.url(for: id, in: segmentDirectory))
-        }
-        for id in segmentIDs where fileSize(SegmentFiles.url(for: id, in: segmentDirectory)) != nil {
+        // A file another record still needs stays, with its ledger entry.
+        let protected = Self.protectedIDs(in: sessions.filter { $0.id != sessionID })
+        let targets = Set(segmentIDs).subtracting(protected)
+        let gone = removeFiles(for: Array(targets))
+        guard gone == targets else {
             deletingSessionIDs.remove(sessionID)
             return false
         }
 
-        try? await ledger.remove(segmentIDs: Set(segmentIDs))
+        try? await ledger.remove(segmentIDs: gone)
         sessions.removeAll { $0.id == sessionID }
         enqueueSave()
         refreshStorage()
@@ -406,7 +564,7 @@ final class Library {
         )) ?? []
         var used: Int64 = 0
         for url in urls where url.pathExtension == "mov" {
-            used += fileSize(url) ?? 0
+            used += fileState(url).size ?? 0
         }
         storage = StorageStatus(usedBytes: used, availableBytes: availableCapacity())
     }
