@@ -15,6 +15,9 @@ final class AppModel {
     }
 
     private(set) var active: ActiveSession?
+    /// The session `endSession` just finished, when finish left a keep-worthy record.
+    /// RootView binds this to a `navigationDestination(item:)`; `beginSession` clears it.
+    var finishedSessionID: UUID?
     /// The shutdown + finish of the session `endSession` just closed. `beginSession` waits for
     /// it, so the camera is released and the old session stays protected until finish lands.
     @ObservationIgnored private var ending: Task<Void, Never>?
@@ -175,6 +178,7 @@ final class AppModel {
             await ending.value
             guard active == nil else { return }
         }
+        finishedSessionID = nil
         let id = UUID()
         let startedAt = Date()
         let capture = makeCapture(segmentDirectory)
@@ -234,6 +238,11 @@ final class AppModel {
         }
         ending = task
         await task.value
+        // Open the finished session only if nothing replaced it meanwhile: beginSession
+        // also waits on `ending`, and its continuation may resume first and set `active`.
+        if self.active == nil, library.record(id: id) != nil {   // self.: `active` here is the unwrapped local
+            finishedSessionID = id
+        }
         return true
     }
 }

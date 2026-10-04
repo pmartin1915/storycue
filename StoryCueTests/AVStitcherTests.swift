@@ -84,6 +84,36 @@ final class AVStitcherTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: output.path))
     }
 
+    // MARK: - S2c: makeComposition (shared with in-app playback)
+
+    func testMakeCompositionDurationMatchesSources() async throws {
+        let directory = try makeTempDirectory()
+        let first = try await makeSyntheticMovie(
+            directory.appendingPathComponent("first.mov"), seconds: 1.0, withAudio: true
+        )
+        let second = try await makeSyntheticMovie(
+            directory.appendingPathComponent("second.mov"), seconds: 1.0, withAudio: true
+        )
+
+        let built = try await AVStitcher.makeComposition([first, second])
+
+        XCTAssertEqual(built.durationSeconds, 2.0, accuracy: 0.15)
+        XCTAssertTrue(built.unreadable.isEmpty)
+    }
+
+    func testMakeCompositionReportsUnreadable() async throws {
+        let directory = try makeTempDirectory()
+        let junk = try makeCorruptMovie(directory.appendingPathComponent("junk.mov"))
+        let good = try await makeSyntheticMovie(
+            directory.appendingPathComponent("good.mov"), seconds: 1.0, withAudio: true
+        )
+
+        let built = try await AVStitcher.makeComposition([junk, good])
+
+        XCTAssertEqual(built.unreadable, [junk])
+        XCTAssertEqual(built.durationSeconds, 1.0, accuracy: 0.15)
+    }
+
     func testAllSourcesUnreadableReturnsOutputNotWritten() async throws {
         let directory = try makeTempDirectory()
         let corrupt1 = try makeCorruptMovie(directory.appendingPathComponent("corrupt-1.mov"))

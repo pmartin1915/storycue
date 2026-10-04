@@ -304,6 +304,127 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.library.record(id: oldID)?.isFinished, true)
     }
 
+    // MARK: - S2c: finishedSessionID (Done opens the session)
+
+    /// Records one kept clip and ends the session: `finishedSessionID` is the session's id,
+    /// which is what makes RootView push its detail screen.
+    func testEndSessionWithKeptClipSetsFinishedSessionID() async {
+        let spy = FactorySpy()
+        let model = makeModel(spy: spy)
+        await model.library.load()
+        await model.beginSession(deck: deck)
+        guard let store = model.active?.store, let id = model.active?.id else {
+            return XCTFail("expected an active session")
+        }
+
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+        guard case let .recording(segmentID) = store.state.phase else {
+            return XCTFail("expected .recording, got \(store.state.phase)")
+        }
+        store.send(.tapPause)
+        await store.waitForIdleEffects()
+        let mock = spy.captures[0]
+        await mock.simulate(.segmentFinished(
+            segmentID: segmentID,
+            outcome: .saved(url: SegmentFiles.url(for: segmentID, in: model.segmentDirectory))
+        ))
+        await store.waitForIdleEffects()
+
+        let ended = await model.endSession()
+        await model.library.waitForPendingSaves()
+
+        XCTAssertTrue(ended)
+        XCTAssertEqual(model.finishedSessionID, id)
+    }
+
+    /// `finish` keeps no record when nothing was keep-worthy, so there is no session to open.
+    func testEndSessionWithNothingKeptLeavesFinishedSessionIDNil() async {
+        let model = makeModel()
+        await model.library.load()
+        await model.beginSession(deck: deck)
+
+        let ended = await model.endSession()
+        await model.library.waitForPendingSaves()
+
+        XCTAssertTrue(ended)
+        XCTAssertTrue(model.library.sessions.isEmpty)
+        XCTAssertNil(model.finishedSessionID)
+    }
+
+    func testBeginSessionClearsFinishedSessionID() async {
+        let spy = FactorySpy()
+        let model = makeModel(spy: spy)
+        await model.library.load()
+        await model.beginSession(deck: deck)
+        guard let store = model.active?.store else { return XCTFail("expected an active session") }
+
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+        guard case let .recording(segmentID) = store.state.phase else {
+            return XCTFail("expected .recording, got \(store.state.phase)")
+        }
+        store.send(.tapPause)
+        await store.waitForIdleEffects()
+        let mock = spy.captures[0]
+        await mock.simulate(.segmentFinished(
+            segmentID: segmentID,
+            outcome: .saved(url: SegmentFiles.url(for: segmentID, in: model.segmentDirectory))
+        ))
+        await store.waitForIdleEffects()
+
+        _ = await model.endSession()
+        await model.library.waitForPendingSaves()
+        XCTAssertNotNil(model.finishedSessionID)
+
+        await model.beginSession(deck: deck)
+
+        XCTAssertNotNil(model.active)
+        XCTAssertNil(model.finishedSessionID)
+    }
+
+    /// A new session begun during the old one's shutdown wins: the old session's finish
+    /// must not push its detail screen over the new recording.
+    func testLateFinishDoesNotSetFinishedSessionIDWhenNewSessionActive() async {
+        let spy = FactorySpy()
+        let model = makeModel(spy: spy)
+        await model.library.load()
+        await model.beginSession(deck: deck)
+        guard let store = model.active?.store, let oldID = model.active?.id else {
+            return XCTFail("expected an active session")
+        }
+
+        store.send(.tapRecord)
+        await store.waitForIdleEffects()
+        guard case let .recording(segmentID) = store.state.phase else {
+            return XCTFail("expected .recording, got \(store.state.phase)")
+        }
+        store.send(.tapPause)
+        await store.waitForIdleEffects()
+        let mock = spy.captures[0]
+        await mock.simulate(.segmentFinished(
+            segmentID: segmentID,
+            outcome: .saved(url: SegmentFiles.url(for: segmentID, in: model.segmentDirectory))
+        ))
+        await store.waitForIdleEffects()
+        await mock.setStubShutdownDelay(0.3)
+
+        let endTask = Task { await model.endSession() }
+        while model.active != nil {
+            await Task.yield()
+        }
+        let beginTask = Task { await model.beginSession(deck: deck) }
+        for _ in 0..<5 { await Task.yield() }
+
+        _ = await endTask.value
+        await beginTask.value
+        await model.library.waitForPendingSaves()
+
+        XCTAssertNotNil(model.active)
+        XCTAssertNil(model.finishedSessionID)
+        XCTAssertEqual(model.library.record(id: oldID)?.isFinished, true)
+    }
+
     func testEndSessionWithNoClipsLeavesNoRecord() async {
         let model = makeModel()
         await model.library.load()

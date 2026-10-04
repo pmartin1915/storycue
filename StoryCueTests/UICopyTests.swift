@@ -60,4 +60,9 @@ final class UICopyTests: XCTestCase {
         XCTAssertEqual(UICopy.exporting(0, 0), "Preparing…")
         XCTAssertEqual(UICopy.exporting(1, 3), "Exporting 1 of 3…")
     }
+
+    func testCompletionTitlePlural() {
+        XCTAssertEqual(UICopy.completionTitle(1), "You recorded 1 answer")
+        XCTAssertEqual(UICopy.completionTitle(2), "You recorded 2 answers")
+    }
 }

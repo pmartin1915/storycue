@@ -23,7 +23,16 @@ protocol Stitcher: Sendable {
 struct AVStitcher: Stitcher {
     init() {}
 
-    func stitch(_ sources: [URL], to output: URL) async throws -> StitchReport {
+    /// Builds the composition half of `stitch`: one video + one audio track, sources
+    /// inserted in order, unreadable ones skipped and reported. Also shared by in-app
+    /// playback (S2c), which wraps the returned composition in an `AVPlayerItem` in memory
+    /// and never writes a file. `durationSeconds` is the sum of the inserted video time
+    /// ranges, 0 when every source was unreadable. Honors Task cancellation.
+    static func makeComposition(_ sources: [URL]) async throws -> (
+        composition: AVMutableComposition,
+        durationSeconds: Double,
+        unreadable: [URL]
+    ) {
         let composition = AVMutableComposition()
         guard let videoTrack = composition.addMutableTrack(
             withMediaType: .video,
@@ -41,10 +50,6 @@ struct AVStitcher: Stitcher {
         var unreadable: [URL] = []
         var cursor = CMTime.zero
         var firstReadableTransform: CGAffineTransform?
-
-        // Remove any file already at `output` first, so `outputWritten == false` really
-        // means no file is there (never a stale one from an earlier export).
-        try? FileManager.default.removeItem(at: output)
 
         for url in sources {
             try Task.checkCancellation()
@@ -88,11 +93,6 @@ struct AVStitcher: Stitcher {
             cursor = cursor + duration
         }
 
-        guard cursor > .zero else {
-            // Every source was unreadable: no file at `output`, nothing thrown, and the
-            // unreadable list still reaches the caller (S3 spec review, point 1).
-            return StitchReport(unreadable: unreadable, durationSeconds: 0, outputWritten: false)
-        }
         if let firstReadableTransform {
             videoTrack.preferredTransform = firstReadableTransform
         }
@@ -101,16 +101,32 @@ struct AVStitcher: Stitcher {
             composition.removeTrack(audioTrack)
         }
 
+        return (composition, cursor.seconds, unreadable)
+    }
+
+    func stitch(_ sources: [URL], to output: URL) async throws -> StitchReport {
+        // Remove any file already at `output` first, so `outputWritten == false` really
+        // means no file is there (never a stale one from an earlier export).
+        try? FileManager.default.removeItem(at: output)
+
+        let built = try await Self.makeComposition(sources)
+
+        guard built.durationSeconds > 0 else {
+            // Every source was unreadable: no file at `output`, nothing thrown, and the
+            // unreadable list still reaches the caller (S3 spec review, point 1).
+            return StitchReport(unreadable: built.unreadable, durationSeconds: 0, outputWritten: false)
+        }
+
         // Decision 4: passthrough when compatible with this composition, else re-encode.
         let passthroughCompatible = await AVAssetExportSession.compatibility(
             ofExportPreset: AVAssetExportPresetPassthrough,
-            with: composition,
+            with: built.composition,
             outputFileType: .mov
         )
         let preset = passthroughCompatible
             ? AVAssetExportPresetPassthrough
             : AVAssetExportPresetHighestQuality
-        guard let session = AVAssetExportSession(asset: composition, presetName: preset) else {
+        guard let session = AVAssetExportSession(asset: built.composition, presetName: preset) else {
             throw ExportFailure.failed(domain: "StoryCue.AVStitcher", code: 3)
         }
         session.outputFileType = .mov
@@ -119,8 +135,8 @@ struct AVStitcher: Stitcher {
         try await session.export(to: output, as: .mov)
 
         return StitchReport(
-            unreadable: unreadable,
-            durationSeconds: cursor.seconds,
+            unreadable: built.unreadable,
+            durationSeconds: built.durationSeconds,
             outputWritten: true
         )
     }
