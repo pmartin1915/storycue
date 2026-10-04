@@ -129,7 +129,7 @@ jobs:
               exported = entry.get("exportedFileName")
               if not suggested or not exported:
                   continue
-              name = next((n for n in expected if suggested.startswith(n)), None)
+              name = next((n for n in expected + optional if suggested.startswith(n)), None)
               # The suggested name may carry a "_0_<uuid>.png" suffix; the stem before
               # the first underscore is the attachment name the test set.
               if name is None or name in copied:
@@ -142,7 +142,7 @@ jobs:
               shutil.copyfile(source, destination)
               copied[name] = destination
 
-          if sorted(copied) != sorted(expected):
+          if sorted(n for n in copied if n in expected) != sorted(expected):
               print("expected 5 attachments (01-…05-), got:", sorted(copied), file=sys.stderr)
               print("manifest.json:", json.dumps(manifest, indent=2)[:4000], file=sys.stderr)
               sys.exit(1)
@@ -212,9 +212,11 @@ jobs:
           manifest_path = os.path.join(raw, "manifest.json")
           review = os.path.join(runner_temp, "review")
           expected = [
-              "dark-01-decks", "dark-02-consent", "dark-03-recorder",
+              "dark-01-decks", "dark-02-consent", "dark-03-recorder", "dark-04-question-bottom",
               "ax5-01-decks", "ax5-02-consent", "ax5-03-recorder",
           ]
+          # Taken only when the AX5 card fits (otherwise it scrolls and has no handle).
+          optional = ["ax5-04-question-bottom"]
 
           try:
               with open(manifest_path, encoding="utf-8") as handle:
@@ -238,7 +240,7 @@ jobs:
               exported = entry.get("exportedFileName")
               if not suggested or not exported:
                   continue
-              name = next((n for n in expected if suggested.startswith(n)), None)
+              name = next((n for n in expected + optional if suggested.startswith(n)), None)
               if name is None or name in copied:
                   continue
               source = os.path.join(raw, exported)
@@ -249,8 +251,8 @@ jobs:
               shutil.copyfile(source, destination)
               copied[name] = destination
 
-          if sorted(copied) != sorted(expected):
-              print("expected 6 review attachments, got:", sorted(copied), file=sys.stderr)
+          if sorted(n for n in copied if n in expected) != sorted(expected):
+              print(f"expected {len(expected)} review attachments, got:", sorted(copied), file=sys.stderr)
               print("manifest.json:", json.dumps(manifest, indent=2)[:4000], file=sys.stderr)
               sys.exit(1)
           for name in sorted(copied):
