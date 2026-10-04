@@ -30,3 +30,5 @@ One line each: idea, why deferred, where it applies. Sweep at session start.
   - A `discard` fall-through `deleteUnchecked` that aborts leaves an all-unkept record the UI never shows (file still referenced; the sweep retries).
   - `testDeleteAbortsWhenStatFails` lets the real removal succeed and doesn't assert the file; the throwing-remover tests cover the survive case.
   - Exporter still takes the two-state `attributesFileSize` (read-only path, never deletes).
+
+- 2026-10-04: `screenshots.yml` review steps are `continue-on-error`, so a FAILING review UI test (PR #12's card-did-not-move assertion) still shows the check green. Make a review-test failure visible (job summary line or a non-blocking annotation) without making screenshots block merges. Applies to `.github/workflows/screenshots.yml`.
