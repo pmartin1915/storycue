@@ -34,9 +34,7 @@ struct RecorderView: View {
             VStack(spacing: 16) {
                 // The question card sits at the top or just above the controls (the user
                 // drags it off the subject's face); the controls never move.
-                if questionAtBottom { Spacer(minLength: 0) }
                 questionArea
-                if !questionAtBottom { Spacer(minLength: 0) }
                 timerRow
                 bannerRow
                 controlsRow
@@ -120,9 +118,13 @@ struct RecorderView: View {
     /// ScrollView a drag would fight scrolling, so there the handle button moves it.
     private var questionArea: some View {
         ViewThatFits(in: .vertical) {
+            // The slot fills the space above the controls and the card is aligned inside it.
+            // (Spacers around the area did not work: with the area's layout priority it took
+            // all the free space and the Spacer got 0, so "bottom" moved the card 16 pt.)
             questionPanel(movable: true)
                 .offset(y: dragOffset)
                 .gesture(questionDrag)
+                .frame(maxHeight: .infinity, alignment: questionAtBottom ? .bottom : .top)
             // A card this tall fills the whole area, so "top" and "bottom" are the same
             // place: no handle.
             ScrollView {
