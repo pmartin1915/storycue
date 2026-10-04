@@ -61,6 +61,7 @@ final class Library {
     private let exporter: Exporter
     private let availableCapacity: @Sendable () -> Int64?
     private let fileState: @Sendable (URL) -> FileState
+    private let removeFile: @Sendable (URL) throws -> Void
 
     private var closedSessionIDs: Set<UUID> = []
     private var deletingSessionIDs: Set<UUID> = []
@@ -74,7 +75,8 @@ final class Library {
         ledger: SegmentLedger,
         exporter: Exporter,
         availableCapacity: @escaping @Sendable () -> Int64?,
-        fileState: @escaping @Sendable (URL) -> FileState
+        fileState: @escaping @Sendable (URL) -> FileState,
+        removeFile: @escaping @Sendable (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }
     ) {
         self.segmentDirectory = segmentDirectory
         self.index = index
@@ -82,6 +84,7 @@ final class Library {
         self.exporter = exporter
         self.availableCapacity = availableCapacity
         self.fileState = fileState
+        self.removeFile = removeFile
     }
 
     // MARK: - Launch reconciliation (decision 4)
@@ -249,7 +252,7 @@ final class Library {
                 continue
             }
             do {
-                try FileManager.default.removeItem(at: url)
+                try removeFile(url)
             } catch {
                 continue
             }
@@ -464,12 +467,20 @@ final class Library {
 
     func discard(_ clip: RecoveredClip) async {
         guard let position = canDecide(clip) else { return }
+        let id = clip.segment.id
+        // Another reference that still needs the file keeps it (and its ledger entry); only this
+        // reference becomes an unkept failure.
+        var after = sessions
+        after[position.session].clips[position.clip].segments[position.segment].outcome = .failed(kept: false)
+        let shared = Self.protectedIDs(in: after).contains(id)
         // A file that is still there (or can't be stat'd) must stay visible: abort rather than hide it.
-        guard removeFiles(for: [clip.segment.id]).contains(clip.segment.id) else { return }
+        if !shared {
+            guard removeFiles(for: [id]).contains(id) else { return }
+        }
         sessions[position.session].clips[position.clip].segments[position.segment].outcome = .failed(kept: false)
         enqueueSave()
         refreshStorage()
-        try? await ledger.remove(segmentIDs: [clip.segment.id])
+        if !shared { try? await ledger.remove(segmentIDs: [id]) }
 
         guard let record = record(id: clip.sessionID) else { return }
         var hasKeepWorthy = false
@@ -516,13 +527,16 @@ final class Library {
         for clip in record.clips {
             for segment in clip.segments { segmentIDs.append(segment.id) }
         }
-        let gone = removeFiles(for: segmentIDs)
-        guard gone.count == Set(segmentIDs).count else {
+        // A file another record still needs stays, with its ledger entry.
+        let protected = Self.protectedIDs(in: sessions.filter { $0.id != sessionID })
+        let targets = Set(segmentIDs).subtracting(protected)
+        let gone = removeFiles(for: Array(targets))
+        guard gone == targets else {
             deletingSessionIDs.remove(sessionID)
             return false
         }
 
-        try? await ledger.remove(segmentIDs: Set(segmentIDs))
+        try? await ledger.remove(segmentIDs: gone)
         sessions.removeAll { $0.id == sessionID }
         enqueueSave()
         refreshStorage()

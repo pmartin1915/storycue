@@ -22,7 +22,8 @@ final class LibraryTests: XCTestCase {
 
     private func makeFixture(
         capacity: Int64? = 10_000_000_000,
-        fileState: @escaping @Sendable (URL) -> FileState = AppModel.attributesFileState
+        fileState: @escaping @Sendable (URL) -> FileState = AppModel.attributesFileState,
+        removeFile: @escaping @Sendable (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }
     ) throws -> Fixture {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("LibraryTests.\(UUID().uuidString)", isDirectory: true)
@@ -48,7 +49,8 @@ final class LibraryTests: XCTestCase {
             ledger: ledger,
             exporter: exporter,
             availableCapacity: { capacity },
-            fileState: fileState
+            fileState: fileState,
+            removeFile: removeFile
         )
         return Fixture(
             library: library,
@@ -1096,6 +1098,116 @@ final class LibraryTests: XCTestCase {
         XCTAssertTrue(fileExists(fixture, shared))
         let entries = try await fixture.ledger.allEntries()
         XCTAssertEqual(entries.map(\.segmentID), [shared.id])
+    }
+
+    // MARK: - Round 2: shared references in discard/delete, a removal that throws
+
+    /// A remover that throws for one ID (the file stays on disk) and really removes the rest.
+    private func failingRemover(for stuckID: UUID) -> @Sendable (URL) throws -> Void {
+        { url in
+            if SegmentFiles.segmentID(from: url) == stuckID { throw CocoaError(.fileWriteNoPermission) }
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
+    func testDiscardKeepsFileAnotherRecordSaved() async throws {
+        let fixture = try makeFixture()
+        let shared = try makeSegment(fixture, deck.questions[0].id, savedOutcome)
+        var undecidedCopy = shared
+        undecidedCopy.outcome = nil
+        try await recordLedger(fixture, shared, finished: true)
+        let owner = makeRecord([clip(deck.questions[0].id, [shared])])
+        let other = makeRecord([clip(deck.questions[0].id, [undecidedCopy])], startedAt: noon(60))
+        try await fixture.index.save([owner, other])
+        let library = fixture.library
+        await library.load()
+        guard let recovered = library.recovered.first else { return XCTFail("expected a recovered clip") }
+        XCTAssertEqual(recovered.sessionID, other.id)
+
+        await library.discard(recovered)
+
+        XCTAssertTrue(fileExists(fixture, shared))
+        XCTAssertNotNil(library.record(id: owner.id))
+        XCTAssertNil(library.record(id: other.id))
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.segmentID), [shared.id])
+    }
+
+    func testDeleteKeepsFileAnotherRecordSaved() async throws {
+        let fixture = try makeFixture()
+        let shared = try makeSegment(fixture, deck.questions[0].id, savedOutcome)
+        try await recordLedger(fixture, shared, finished: true)
+        let owner = makeRecord([clip(deck.questions[0].id, [shared])])
+        let other = makeRecord([clip(deck.questions[0].id, [shared])], startedAt: noon(60))
+        try await fixture.index.save([owner, other])
+        let library = fixture.library
+        await library.load()
+
+        let deleted = await library.delete(sessionID: other.id)
+
+        XCTAssertTrue(deleted)
+        XCTAssertTrue(fileExists(fixture, shared))
+        XCTAssertNotNil(library.record(id: owner.id))
+        XCTAssertNil(library.record(id: other.id))
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.segmentID), [shared.id])
+    }
+
+    func testFinishNothingKeptKeepsFileWhenRemovalThrows() async throws {
+        let stuckID = UUID()
+        let fixture = try makeFixture(removeFile: failingRemover(for: stuckID))
+        let library = fixture.library
+        await library.load()
+        let stuck = try makeUnreadableSegment(fixture, id: stuckID, deck.questions[0].id, .failed(kept: false))
+        try await recordLedger(fixture, stuck, finished: true)
+
+        await library.finish(
+            sessionID: UUID(),
+            deck: deck,
+            startedAt: noon(),
+            clips: [clip(deck.questions[0].id, [stuck])]
+        )
+
+        XCTAssertTrue(fileExists(fixture, stuck))
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.segmentID), [stuckID])
+    }
+
+    func testDeleteAbortsWhenRemovalThrows() async throws {
+        let stuckID = UUID()
+        let fixture = try makeFixture(removeFile: failingRemover(for: stuckID))
+        let stuck = try makeUnreadableSegment(fixture, id: stuckID, deck.questions[0].id, savedOutcome)
+        try await recordLedger(fixture, stuck, finished: true)
+        let record = makeRecord([clip(deck.questions[0].id, [stuck])])
+        try await fixture.index.save([record])
+        let library = fixture.library
+        await library.load()
+
+        let deleted = await library.delete(sessionID: record.id)
+
+        XCTAssertFalse(deleted)
+        XCTAssertTrue(fileExists(fixture, stuck))
+        XCTAssertNotNil(library.record(id: record.id))
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.segmentID), [stuckID])
+    }
+
+    func testDiscardAbortsWhenRemovalThrows() async throws {
+        let stuckID = UUID()
+        let fixture = try makeFixture(removeFile: failingRemover(for: stuckID))
+        let stuck = try makeUnreadableSegment(fixture, id: stuckID, deck.questions[0].id, nil)
+        try await recordLedger(fixture, stuck, finished: true)
+        try await fixture.index.save([makeRecord([clip(deck.questions[0].id, [stuck])])])
+        let library = fixture.library
+        await library.load()
+        guard let recovered = library.recovered.first else { return XCTFail("expected a recovered clip") }
+
+        await library.discard(recovered)
+
+        XCTAssertTrue(fileExists(fixture, stuck))
+        XCTAssertEqual(library.recovered.map(\.id), [stuckID])
+        let entries = try await fixture.ledger.allEntries()
+        XCTAssertEqual(entries.map(\.segmentID), [stuckID])
     }
 
     func testAttributesFileStateDistinguishesMissingFromUnreadable() throws {

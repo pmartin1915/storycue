@@ -30,6 +30,14 @@ Tests: `testLoadLeavesUnreadableUndecidedSegmentUndecided`,
 `testLoadSweepKeepsFileAnotherRecordSaved`, `testFinishKeepsFileAnotherRecordSaved`,
 `testAttributesFileStateDistinguishesMissingFromUnreadable`.
 
+**Round 2 (re-audit of `973e805`: 1 medium, 1 low).** Rule 3 now also covers `discard` and
+`delete`: discarding a clip whose UUID another record still needs only relabels that reference;
+deleting a record leaves (and keeps the ledger entry of) any file another record needs. `Library`
+takes an injectable `removeFile` (default `FileManager.removeItem`) so tests make a removal
+actually throw. Tests: `testDiscardKeepsFileAnotherRecordSaved`, `testDeleteKeepsFileAnotherRecordSaved`,
+`testFinishNothingKeptKeepsFileWhenRemovalThrows`, `testDeleteAbortsWhenRemovalThrows`,
+`testDiscardAbortsWhenRemovalThrows`.
+
 ## The data-loss invariant (the one rule this spec is built on)
 
 > **The sweep may delete only a file it can prove is not part of any kept session.**
