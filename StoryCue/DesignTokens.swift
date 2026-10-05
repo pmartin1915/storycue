@@ -41,6 +41,8 @@ enum DesignTokens {
     }
     /// Translucent black behind text over the camera (≥ 7:1 white text over a white feed).
     static let overCameraFill = Color.black.opacity(0.7)
+    /// The recording pill: darker than system red so white text clears 4.5:1.
+    static let recordingFill = Color(red: 0.78, green: 0.10, blue: 0.10)
     #if DEBUG
     static let demoBackdropTop = Color(red: 0.20, green: 0.13, blue: 0.09)
     static let demoBackdropBottom = Color(red: 0.06, green: 0.04, blue: 0.03)
