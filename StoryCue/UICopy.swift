@@ -43,7 +43,9 @@ enum UICopy {
     static let finish = "Finish"
     static let done = "Done"
 
-    static let readAloudBanner = "Start by reading the consent line aloud."
+    /// Quotes the line itself: by the recorder, nobody remembers it from the consent card.
+    static var readAloudBanner: String { "First, have them read this aloud: \(readAloudCallout)" }
+    static let recordingIndicator = "Recording"
     static let noAudioBanner = "No microphone. Video will record without sound."
 
     static let preparing = "Starting the camera…"

@@ -169,7 +169,7 @@ sizes. Every button has an accessibility label equal to its visible text. Minimu
   - Top: `UICopy.questionCounter(index, count)`, the current question (`.largeTitle`, white on a
     translucent black backing, ≥7:1 contrast), and the next-question preview (`.callout`,
     secondary) when `nextQuestionPreview` is non-nil.
-  - Recording dot + count-up timer when `presentation.showsRecordingDot`.
+  - Recording dot + count-up timer when `presentation.showsRecordingDot`. (Moved 2026-10-04, PR #17: now a red "Recording 0:12" pill in the top-right toolbar.)
   - Banner row (`presentation.banner`) above the controls.
   - Controls: primary button (`presentation.primary`), the advance button
     (`presentation.advance`), and a leading "Done" toolbar button that calls
@@ -288,7 +288,7 @@ read. Exact text:
 | `questionCounter(_ i: Int, _ n: Int)` | "Question \(i + 1) of \(n)" |
 | `record` / `pause` / `resume` / `saving` / `cancel` | "Record" / "Pause" / "Resume" / "Saving…" / "Cancel" |
 | `skip` / `next` / `finish` / `done` | "Skip" / "Next question" / "Finish" / "Done" |
-| `readAloudBanner` | "Start by reading the consent line aloud." |
+| `readAloudBanner` | "First, have them read this aloud: " + `readAloudCallout` (PR #17; was "Start by reading the consent line aloud.") |
 | `noAudioBanner` | "No microphone. Video will record without sound." |
 | `preparing` | "Starting the camera…" |
 | `notAuthorizedTitle` / `notAuthorizedBody` | "Camera or microphone is off" / "Turn on Camera and Microphone for StoryCue in Settings to record." |

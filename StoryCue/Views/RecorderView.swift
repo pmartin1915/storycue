@@ -39,7 +39,6 @@ struct RecorderView: View {
                 // The question card sits at the top or just above the controls (the user
                 // drags it off the subject's face); the controls never move.
                 questionArea
-                timerRow
                 bannerRow
                 controlsRow
                     .padding(.bottom, 24)
@@ -71,6 +70,13 @@ struct RecorderView: View {
                 .disabled(!presentation.canLeave)
                 .accessibilityLabel(UICopy.done)
                 .accessibilityIdentifier("doneButton")
+            }
+            // Only while recording, so an empty item never leaves a glass bubble behind.
+            if presentation.showsRecordingDot {
+                ToolbarItem(placement: .topBarTrailing) {
+                    recordingIndicator
+                }
+                .sharedBackgroundVisibility(.hidden)
             }
         }
         .onChange(of: scenePhase) { old, new in
@@ -218,22 +224,32 @@ struct RecorderView: View {
         .accessibilityIdentifier("questionPanel")
     }
 
-    // MARK: - Timer
+    // MARK: - Recording indicator
 
+    /// Top right, red, only while the camera is actually writing: the filmer and the subject
+    /// can both tell at a glance whether it is on.
     @ViewBuilder
-    private var timerRow: some View {
+    private var recordingIndicator: some View {
         if presentation.showsRecordingDot, let timerText = presentation.timerText {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Circle()
-                    .fill(.red)
-                    .frame(width: 10, height: 10)
+                    .fill(.white)
+                    .frame(width: 8, height: 8)
+                Text(UICopy.recordingIndicator)
+                    .fontWeight(.semibold)
                 Text(timerText)
-                    .font(.body.monospacedDigit())
-                    .foregroundStyle(.white)
+                    .monospacedDigit()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(DesignTokens.overCameraFill, in: Capsule())
+            .font(.subheadline)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(DesignTokens.recordingFill, in: Capsule())
+            // The nav bar has a fixed height; past AX1 the pill would clip.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(UICopy.recordingIndicator), \(timerText)")
+            .accessibilityIdentifier("recordingIndicator")
         }
     }
 
@@ -256,6 +272,11 @@ struct RecorderView: View {
     private func bannerText(_ text: String) -> some View {
         Text(text)
             .font(.callout)
+            // Wrap, never truncate: the read-aloud banner quotes the consent line, and at AX5
+            // it was cut to "First, have them…" (review screenshot ax5-03-recorder). Capped
+            // at AX2 so the banner can't crowd out the question card.
+            .fixedSize(horizontal: false, vertical: true)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding()
