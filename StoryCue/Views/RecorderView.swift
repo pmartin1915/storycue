@@ -272,6 +272,11 @@ struct RecorderView: View {
     private func bannerText(_ text: String) -> some View {
         Text(text)
             .font(.callout)
+            // Wrap, never truncate: the read-aloud banner quotes the consent line, and at AX5
+            // it was cut to "First, have them…" (review screenshot ax5-03-recorder). Capped
+            // at AX2 so the banner can't crowd out the question card.
+            .fixedSize(horizontal: false, vertical: true)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding()
