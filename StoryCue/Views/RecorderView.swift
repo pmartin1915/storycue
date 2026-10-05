@@ -10,10 +10,14 @@ struct RecorderView: View {
     @State private var countdown: Int?
     @State private var countdownTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Where the question card sits. Not persisted: RootView gives each session a fresh
-    /// RecorderView, so every session starts with the card at the top.
-    @State private var questionAtBottom = false
-    @State private var dragOffset: CGFloat = 0
+    /// Where the question card rests, as a distance down from the top of its slot. Not
+    /// persisted: RootView gives each session a fresh RecorderView, so every session starts
+    /// with the card at the top.
+    @State private var questionRestOffset: CGFloat = 0
+    @State private var dragTranslation: CGFloat = 0
+    @State private var questionSlotHeight: CGFloat = 0
+    @State private var questionCardHeight: CGFloat = 0
+    @State private var questionDrops = 0          // haptic trigger: one tick per deliberate move
 
     private var store: SessionStore { session.store }
 
@@ -54,7 +58,7 @@ struct RecorderView: View {
             (old == .pause) != (new == .pause)
         }
         .sensoryFeedback(.selection, trigger: store.state.questionIndex)
-        .sensoryFeedback(.selection, trigger: questionAtBottom)
+        .sensoryFeedback(.selection, trigger: questionDrops)
         .task { store.startTicker() }
         .onDisappear { cancelCountdown() }
         .navigationBarBackButtonHidden(true)
@@ -72,7 +76,7 @@ struct RecorderView: View {
         .onChange(of: scenePhase) { old, new in
             if new != .active {
                 cancelCountdown()
-                dragOffset = 0      // an interrupted drag may never reach onEnded
+                dragTranslation = 0     // an interrupted drag may never reach onEnded
             }
             if let event = ScenePhaseMapping.event(from: old, to: new) {
                 store.send(event)
@@ -112,21 +116,27 @@ struct RecorderView: View {
 
     // MARK: - Question panel
 
-    /// The card at its natural height when it fits, so it can sit at either end; in a
+    /// The card at its natural height when it fits, so it can sit anywhere in the slot; in a
     /// ScrollView when it doesn't (largest accessibility sizes on a small screen), so it can
     /// never push Record/Next off screen. Only the fitting card takes the drag: inside the
     /// ScrollView a drag would fight scrolling, so there the handle button moves it.
     private var questionArea: some View {
         ViewThatFits(in: .vertical) {
-            // The slot fills the space above the controls and the card is aligned inside it.
-            // (Spacers around the area did not work: with the area's layout priority it took
-            // all the free space and the Spacer got 0, so "bottom" moved the card 16 pt.)
+            // The slot fills the space above the controls; the card is pinned to its top and
+            // offset down by where the user left it. (Spacers around the area did not work:
+            // the area's layout priority took all the free space and the Spacer got 0.)
             questionPanel(movable: true)
-                .offset(y: dragOffset)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { questionCardHeight = $0 }
+                .offset(y: questionOffset)
                 .gesture(questionDrag)
-                .frame(maxHeight: .infinity, alignment: questionAtBottom ? .bottom : .top)
-            // A card this tall fills the whole area, so "top" and "bottom" are the same
-            // place: no handle.
+                .frame(maxHeight: .infinity, alignment: .top)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { questionSlotHeight = $0 }
+                // Keep the resting spot inside the travel, so the next drag starts where the
+                // card actually is.
+                .onChange(of: questionTravel) { _, _ in
+                    questionRestOffset = clampedQuestionOffset(questionRestOffset)
+                }
+            // A card this tall fills the whole area, so there is nowhere to move it: no handle.
             ScrollView {
                 questionPanel(movable: false)
             }
@@ -135,29 +145,35 @@ struct RecorderView: View {
         .layoutPriority(1)
     }
 
-    /// Follows the finger toward the other end only, then snaps to the nearer end.
+    /// How far the card can travel: the slot minus the card. Shrinks when a banner appears or
+    /// the next question is longer, and every offset below is clamped to it.
+    private var questionTravel: CGFloat { max(0, questionSlotHeight - questionCardHeight) }
+
+    private func clampedQuestionOffset(_ y: CGFloat) -> CGFloat { min(max(y, 0), questionTravel) }
+
+    private var questionOffset: CGFloat { clampedQuestionOffset(questionRestOffset + dragTranslation) }
+
+    /// In the lower half of its travel: the handle offers "to top", otherwise "to bottom".
+    private var questionIsLow: Bool { questionTravel > 0 && questionOffset > questionTravel / 2 }
+
+    /// Follows the finger anywhere in the slot and stays where it is let go.
     private var questionDrag: some Gesture {
-        DragGesture(minimumDistance: 20)
+        DragGesture(minimumDistance: 8)
             .onChanged { value in
-                let dy = value.translation.height
-                dragOffset = questionAtBottom ? min(0, dy) : max(0, dy)
+                dragTranslation = value.translation.height
             }
             .onEnded { value in
-                let dy = value.predictedEndTranslation.height
-                let toBottom = questionAtBottom ? dy > -Self.questionSnapDistance : dy > Self.questionSnapDistance
-                withAnimation(reduceMotion ? nil : DesignTokens.Motion.morph) {
-                    questionAtBottom = toBottom
-                    dragOffset = 0
-                }
+                questionRestOffset = clampedQuestionOffset(questionRestOffset + value.translation.height)
+                dragTranslation = 0
+                questionDrops += 1
             }
     }
 
-    private static let questionSnapDistance: CGFloat = 60
-
     private func toggleQuestionPosition() {
         withAnimation(reduceMotion ? nil : DesignTokens.Motion.morph) {
-            questionAtBottom.toggle()
+            questionRestOffset = questionIsLow ? 0 : questionTravel
         }
+        questionDrops += 1
     }
 
     private var questionHandle: some View {
@@ -171,7 +187,7 @@ struct RecorderView: View {
         .buttonStyle(.plain)
         .padding(.vertical, -8)              // 44 pt to touch, 28 pt of card height
         .accessibilitySortPriority(-1)       // VoiceOver reads the question first
-        .accessibilityLabel(questionAtBottom ? UICopy.moveQuestionToTop : UICopy.moveQuestionToBottom)
+        .accessibilityLabel(questionIsLow ? UICopy.moveQuestionToTop : UICopy.moveQuestionToBottom)
         .accessibilityIdentifier("questionHandle")
     }
 

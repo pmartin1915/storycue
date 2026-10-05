@@ -83,16 +83,26 @@ final class ScreenshotTests: XCTestCase {
         wait(for: [ready], timeout: 10)
         attachScreenshot(of: app, named: "dark-03-recorder")
 
-        // Drag the question card off the subject's face: it snaps above the controls.
+        // Drag the question card off the subject's face: it follows the finger and stays where
+        // it is let go. Dragging far past the controls parks it at the bottom of its travel.
         let questionPanel = app.descendants(matching: .any)["questionPanel"].firstMatch
         guard waitForScreen(questionPanel, named: "dark-04-question-bottom (question card)") else { return }
         let panelTopBefore = questionPanel.frame.minY
-        questionPanel.swipeDown()
-        let deadline = Date().addingTimeInterval(3)   // let the snap animation finish
-        while questionPanel.frame.minY <= panelTopBefore + 100, Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        }
-        XCTAssertGreaterThan(questionPanel.frame.minY, panelTopBefore + 100, "question card did not move down")
+        let grab = questionPanel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        grab.press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        let panelTopBottom = questionPanel.frame.minY
+        XCTAssertGreaterThan(panelTopBottom, panelTopBefore + 100, "question card did not move down")
+
+        // Free positioning: a short drag up leaves it between the two ends, not snapped.
+        let regrab = questionPanel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        regrab.press(forDuration: 0.2, thenDragTo: regrab.withOffset(CGVector(dx: 0, dy: -80)))
+        let panelTopMiddle = questionPanel.frame.minY
+        XCTAssertLessThan(panelTopMiddle, panelTopBottom - 40, "question card did not follow the drag up")
+        XCTAssertGreaterThan(panelTopMiddle, panelTopBefore + 40, "question card snapped to the top")
+
+        // Park it at the bottom again for the review shot.
+        let last = questionPanel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        last.press(forDuration: 0.2, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
         attachScreenshot(of: app, named: "dark-04-question-bottom")
     }
 
