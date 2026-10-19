@@ -15,7 +15,7 @@ Submit 1.0 to App Review by 2026-10-16 (S8). Version 1.0 is fully entered in ASC
 | S7 Duo pivot check | re-framed: is a RELEASE 27.1+ Xcode on the runner image and does ASC accept 27.1 builds (a beta does not count). Date 10-10 has passed; outcome unverified, last seen 2026-10-04 | Re-check runner image; S9 Duo path is after 1.0 |
 
 ## Waiting on Perry
-1. **Renamed to Tellfolk (Perry, 2026-10-18; exact-match USPTO + App Store screen clean, not legal clearance).** Open: change the ASC app name; support/privacy pages DONE (live at martinapps.dev/tellfolk/, martinapps-site `2e1cc77`; /storycue/ redirects); then Add for Review. Why: name decision first: USPTO shows a live STORYCUE application (serial 99261420, Class 42 SaaS advisory, William Victor, notice of allowance 2026-02-10, revived 2026-09-15). On Perry To-Do 2026-10-16.
+1. **Renamed to Tellfolk; 1.0 draft is ready for Perry's Add for Review click (2026-10-19).** ASC name, description, Support + Privacy URLs set; build 15.1 (deploy run `39204181253`, rename PR #18 `4477368`) attached and device-checked by Perry; existing 6.9" screenshots carry no app name so they stay. Not a legal clearance: exact-match USPTO + App Store screen only.
 2. Device checks on 14.1 + featuring nomination: week of 2026-10-19; Claude prefills the nomination.
 3. Real USPTO search done 2026-10-16: see the line above.
 4. Later: free + one-time unlock for 1.x (deferred to 2027-01-15, sitting 2026-10-16; `isIncluded` bit exists in the deck model); optional real-camera recorder screenshot and captioned screenshots; incoming-call-mid-clip test was deferred in S5 rung 4b.
