@@ -128,8 +128,8 @@ final class ExporterTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
         }
         XCTAssertEqual(result.files.map { $0.deletingPathExtension().lastPathComponent }.sorted(), [
-            "StoryCue - Grandparents - \(Self.dayString(sessionDate)) - Q01",
-            "StoryCue - Grandparents - \(Self.dayString(sessionDate)) - Q02",
+            "Tellfolk - Grandparents - \(Self.dayString(sessionDate)) - Q01",
+            "Tellfolk - Grandparents - \(Self.dayString(sessionDate)) - Q02",
         ].sorted())
         // .files keeps the temp directory for S2b's share sheet; discard(_:) removes it.
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.directory.path))

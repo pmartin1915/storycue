@@ -4,7 +4,7 @@ import Foundation
 /// the two parameterised ones), so the S4 copy review and the S6 privacy-policy check
 /// have one file to read. No string literal shown to the user outside this file.
 enum UICopy {
-    static let appTitle = "StoryCue"
+    static let appTitle = "Tellfolk"
     static let deckPickerTitle = "Choose a deck"
     static func questionCount(_ n: Int) -> String { "\(n) questions" }
     static func deckTeaser(_ deckID: String) -> String {
@@ -50,10 +50,10 @@ enum UICopy {
 
     static let preparing = "Starting the camera…"
     static let notAuthorizedTitle = "Camera or microphone is off"
-    static let notAuthorizedBody = "Turn on Camera and Microphone for StoryCue in Settings to record."
+    static let notAuthorizedBody = "Turn on Camera and Microphone for Tellfolk in Settings to record."
     static let openSettings = "Open Settings"
     static let unavailableTitle = "Camera unavailable"
-    static let unavailableBody = "StoryCue can't use the camera right now. Close other camera apps and try again."
+    static let unavailableBody = "Tellfolk can't use the camera right now. Close other camera apps and try again."
 
     static func pausedBanner(_ reason: SegmentEndReason) -> String {
         switch reason {
@@ -64,7 +64,7 @@ enum UICopy {
         case .captureInterruption:
             return "The camera was interrupted."
         case .sceneResignedActive, .sceneBackgrounded:
-            return "Paused when StoryCue left the screen."
+            return "Paused when Tellfolk left the screen."
         case .thermalShutdown:
             return "Paused so the phone can cool down."
         case .runtimeError, .mediaServicesReset, .outputEndedUnexpectedly:
@@ -120,8 +120,8 @@ enum UICopy {
     static let lowSpaceConsentNote = "Your iPhone is low on space. Free some up before a long conversation."
 
     static let recoveredHeader = "Recovered clips"
-    static let recoveredExplainer = "StoryCue closed while these were recording. They may end early. Keep them or delete them."
-    static let recoveredUndecided = "Recovered after StoryCue closed. It may end early."
+    static let recoveredExplainer = "Tellfolk closed while these were recording. They may end early. Keep them or delete them."
+    static let recoveredUndecided = "Recovered after Tellfolk closed. It may end early."
     static let keep = "Keep"
     static let deleteClip = "Delete clip"
     static let deleteClipConfirm = "Delete this clip? This can't be undone."

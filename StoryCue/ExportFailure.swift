@@ -56,7 +56,7 @@ enum ExportFailure: Error, Equatable, Sendable {
         case .outOfSpace:
             return "Your iPhone ran out of space during the export. Your recordings are safe. Free up some space and try again."
         case .photosDenied:
-            return "StoryCue can't save to Photos. To allow it, go to Settings › StoryCue › Photos and choose Add Photos Only."
+            return "Tellfolk can't save to Photos. To allow it, go to Settings › Tellfolk › Photos and choose Add Photos Only."
         case .photosRestricted:
             return "Saving to Photos is restricted on this iPhone. Export to Files instead."
         case let .partiallySavedToPhotos(saved, total, cause):
