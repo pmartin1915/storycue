@@ -70,8 +70,8 @@ Thanksgiving, which is 11-26, through the holiday weekend).
 | Supplemental Materials | see below |
 
 **Supplemental Materials** (up to 5 URLs):
-1. `https://martinapps.dev/storycue/privacy-policy.html` (live since 2026-10-16, martinapps-site `cfaa378`)
-2. `https://martinapps.dev/storycue/support.html` (same)
+1. `https://martinapps.dev/tellfolk/privacy-policy.html` (live 2026-10-19, martinapps-site `2e1cc77`)
+2. `https://martinapps.dev/tellfolk/support.html` (same)
 3. Optional: a TestFlight **public** link. That needs an External Testing group, and that group
    needs Beta App Review. Skip it unless Perry wants external testers anyway.
 4. Strongly recommended: the 15-second clip from PLAN §6 if one exists, as an unlisted link. Apple says
