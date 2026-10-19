@@ -5,12 +5,13 @@ Connect → Featuring Nominations. Form fields were taken from Apple's help page
 ("Nominate your app for featuring", read 2026-10-04), not from memory._
 _Dates refreshed 2026-10-18 after the 10-16 decision sitting. The text below is still the 10-04 draft._
 
-## Blocker before filing: the name
+## Name: Tellfolk (chosen 2026-10-18, Perry)
 
-USPTO shows a live STORYCUE application (serial 99261420, Class 42; revived 2026-09-15). Perry
-chose to rename first (sitting 2026-10-18). **Do not file until the final name is in ASC.** Replace
-"StoryCue" in the Nomination Name, Description and Helpful Details, and re-point the two
-martinapps.dev/storycue/ URLs if the path changes.
+STORYCUE is blocked by a live USPTO application (serial 99261420, Class 42; revived 2026-09-15).
+Tellfolk screened clean on 2026-10-18: no exact USPTO wordmark hit and no exact US App Store title.
+That was an exact-match screen, not legal clearance. **Do not file until ASC shows the name
+Tellfolk.** The two martinapps.dev/storycue/ URLs below still use the old path: re-point them (or
+add a redirect) once the pages move to /tellfolk/.
 
 ## Read this first: two decisions are built into this draft
 
@@ -29,29 +30,29 @@ The draft can be saved without submitting it. Once it is submitted, the type can
 ## Form fields
 
 **Nomination Name** (internal only):
-`StoryCue launch: record your family this Thanksgiving`
+`Tellfolk launch: record your family this Thanksgiving`
 
 **Nomination Type**: **App Launch**
 
 **Description**:
-> StoryCue is a new app for recording the people you love telling their stories. Pick a question
+> Tellfolk is a new app for recording the people you love telling their stories. Pick a question
 > deck (Grandparents, Parents, Kids Ask the Grownups, Couples, or Holiday Table), prop up your
 > iPhone, and record the answers one question at a time. A large-type question card stays on
 > screen while you film. Before recording, everyone reads a consent card aloud together.
 >
 > It's built for the real conversations that happen when families get together. Pause and resume
 > join into one answer. If a phone call or a crash interrupts an answer,
-> StoryCue finds the recording the next time you open the app. Export a whole session as one video, or one video per
+> Tellfolk finds the recording the next time you open the app. Export a whole session as one video, or one video per
 > answer, to Photos or Files.
 >
 > Every question is written for the app to draw out a story, not a one-word fact: "What did
 > your childhood kitchen smell like, and who was cooking?" "What do you remember about the day
 > I was born?"
 >
-> Recordings stay on the iPhone until you export them. StoryCue has no account, no cloud, no
+> Recordings stay on the iPhone until you export them. Tellfolk has no account, no cloud, no
 > ads, no tracking, and no network requests at all. Its privacy label is Data Not Collected.
 >
-> StoryCue launches this fall. We're nominating it for Thanksgiving week, when families
+> Tellfolk launches this fall. We're nominating it for Thanksgiving week, when families
 > sit down together and many people decide this is the year to record a grandparent.
 
 **Publish Date/Timeframe**: custom range **2026-11-16 → 2026-11-29** (the week before
@@ -78,7 +79,7 @@ Thanksgiving, which is 11-26, through the holiday weekend).
    doesn't need a Duo for this nomination.
 
 **Helpful Details**:
-> StoryCue is made by a one-person studio. [PERRY: one or two sentences on why you built
+> Tellfolk is made by a one-person studio. [PERRY: one or two sentences on why you built
 > it, in your own words, or delete this paragraph.]
 >
 > Accessibility: the question on the recorder scales through every accessibility text size, and
@@ -107,7 +108,7 @@ Thanksgiving, which is 11-26, through the holiday weekend).
 - [ ] **Pricing.** Apple's featuring page says editors favor freemium. The text above says
       nothing about price, so it holds whichever way the pricing decision goes.
 - [x] The privacy and support URLs resolve (`storycue-pages` merged 2026-10-16).
-- [ ] The name is final and matches ASC (see the blocker at the top).
+- [ ] ASC app name is changed to Tellfolk and matches this text (see the name note at the top).
 
 ## Second nomination, later: iPhone Duo (App Enhancements)
 

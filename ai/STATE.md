@@ -1,6 +1,6 @@
 # STATE: storycue (NOW)
 
-**Updated 2026-10-18.** Keep this to one screen. Update it in the same commit as any change of state, and replace lines rather than appending dated entries. Older state is in `ai/archive/STATE-through-2026-10-04.md`; handoffs live in `docs/HANDOFF-*.md` (newest: `docs/HANDOFF-2026-10-04-s6-icon-card.md`).
+**Updated 2026-10-19.** Keep this to one screen. Update it in the same commit as any change of state, and replace lines rather than appending dated entries. Older state is in `ai/archive/STATE-through-2026-10-04.md`; handoffs live in `docs/HANDOFF-*.md` (newest: `docs/HANDOFF-2026-10-04-s6-icon-card.md`).
 
 ## Critical path
 Submit 1.0 to App Review by 2026-10-16 (S8). Version 1.0 is fully entered in ASC (draft, NOT submitted; "Add for Review" is Perry's click): promo/description/keywords, 6.9" screenshots 01-05, age rating 4+, App Privacy = Data Not Collected (published), Free, all countries, build 14.1 attached (`34551a9`). Last verified 2026-10-04; nothing in this repo has changed since (unverified for ASC itself, last seen 2026-10-04). Owner: Perry.
@@ -15,7 +15,7 @@ Submit 1.0 to App Review by 2026-10-16 (S8). Version 1.0 is fully entered in ASC
 | S7 Duo pivot check | re-framed: is a RELEASE 27.1+ Xcode on the runner image and does ASC accept 27.1 builds (a beta does not count). Date 10-10 has passed; outcome unverified, last seen 2026-10-04 | Re-check runner image; S9 Duo path is after 1.0 |
 
 ## Waiting on Perry
-1. **Rename chosen (Perry, sitting 2026-10-18).** Claude owes a shortlist of 5 names, USPTO + App Store checked; Perry picks, then Add for Review. Why: name decision first: USPTO shows a live STORYCUE application (serial 99261420, Class 42 SaaS advisory, William Victor, notice of allowance 2026-02-10, revived 2026-09-15). On Perry To-Do 2026-10-16.
+1. **Renamed to Tellfolk (Perry, 2026-10-18; exact-match USPTO + App Store screen clean, not legal clearance).** Open: change the ASC app name; move support/privacy pages from /storycue/ to /tellfolk/ (martinapps-site); then Add for Review. Why: name decision first: USPTO shows a live STORYCUE application (serial 99261420, Class 42 SaaS advisory, William Victor, notice of allowance 2026-02-10, revived 2026-09-15). On Perry To-Do 2026-10-16.
 2. Device checks on 14.1 + featuring nomination: week of 2026-10-19; Claude prefills the nomination.
 3. Real USPTO search done 2026-10-16: see the line above.
 4. Later: free + one-time unlock for 1.x (deferred to 2027-01-15, sitting 2026-10-16; `isIncluded` bit exists in the deck model); optional real-camera recorder screenshot and captioned screenshots; incoming-call-mid-clip test was deferred in S5 rung 4b.
