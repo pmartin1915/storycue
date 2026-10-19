@@ -79,8 +79,8 @@ Thanksgiving, which is 11-26, through the holiday weekend).
    doesn't need a Duo for this nomination.
 
 **Helpful Details**:
-> Tellfolk is made by a one-person studio. [PERRY: one or two sentences on why you built
-> it, in your own words, or delete this paragraph.]
+> Tellfolk is made by a one-person studio. I built it as a place where real, lived experiences can
+> be shared and preserved in an intuitive and private way.
 >
 > Accessibility: the question on the recorder scales through every accessibility text size, and
 > the deck and export layouts restack at those sizes. Motion respects Reduce Motion. The record
@@ -93,7 +93,7 @@ Thanksgiving, which is 11-26, through the holiday weekend).
 
 ## Check before filing
 
-- [ ] **Write the "why I built it" lines first.** A Sonnet review (2026-10-04) rated them the
+- [x] **"Why I built it" lines: written 2026-10-19 (Perry's own words, in Helpful Details).** Original note: A Sonnet review (2026-10-04) rated them the
       strongest editorial asset in the form. Kimi was out of weekly quota, so Kimi did not review.
 
 - [ ] **Placeholder rules.** Only Perry can write it, so the draft doesn't invent a reason. If

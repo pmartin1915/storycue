@@ -11,7 +11,7 @@ Submit 1.0 to App Review by 2026-10-16 (S8). Version 1.0 is fully entered in ASC
 | App code | main `34551a9`; S0-S4, S2c, S2d, storage sweep (PR #8 `e0122f9`), privacy manifest (#11 `227470a`), free-drag card (#16 `02c5969`), speech-bubble icon (#15 `7f68cba`), Recording pill (#17 `a93cb62`) all merged. CI 269/269 on #17. No open PRs, no CI runs since 2026-10-05 | Nothing queued; only changes if device checks on 14.1 find something |
 | TestFlight | 1.0 (14.1) = deploy run `37258274920` from main `f2332ea`, Xcode 27A266a | Perry device checks (Reduce Motion morph, VoiceOver, haptics, serif over camera, drag feel) |
 | S6 listing | metadata in `docs/S6-ASC-METADATA.md`; support/privacy pages on martinapps-site branch `storycue-pages` `cd10b5d`, MERGED and live (martinapps-site `cfaa378`, 2026-10-16) | None; support and privacy URLs resolve |
-| Featuring nomination | drafted `docs/S6-FEATURING-NOMINATION.md` (`0e8fe1b`), App Launch window 11-16..11-29 | Perry adds "why I built it" lines, files; week of 2026-10-19, Claude prefills the nomination (was targeted ~10-09; filed status unverified, last seen 2026-10-04) |
+| Featuring nomination | drafted `docs/S6-FEATURING-NOMINATION.md` (`0e8fe1b`), App Launch window 11-16..11-29 | "Why I built it" line DONE 2026-10-19 (in the doc); Perry files; week of 2026-10-19, Claude prefills the nomination (was targeted ~10-09; filed status unverified, last seen 2026-10-04) |
 | S7 Duo pivot check | re-framed: is a RELEASE 27.1+ Xcode on the runner image and does ASC accept 27.1 builds (a beta does not count). Date 10-10 has passed; outcome unverified, last seen 2026-10-04 | Re-check runner image; S9 Duo path is after 1.0 |
 
 ## Waiting on Perry
