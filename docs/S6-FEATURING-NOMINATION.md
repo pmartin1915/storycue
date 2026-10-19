@@ -3,6 +3,14 @@
 _Drafted 2026-10-04 against main `58f0e9e`. Opus drafts; Perry edits and files it in App Store
 Connect → Featuring Nominations. Form fields were taken from Apple's help page
 ("Nominate your app for featuring", read 2026-10-04), not from memory._
+_Dates refreshed 2026-10-18 after the 10-16 decision sitting. The text below is still the 10-04 draft._
+
+## Blocker before filing: the name
+
+USPTO shows a live STORYCUE application (serial 99261420, Class 42; revived 2026-09-15). Perry
+chose to rename first (sitting 2026-10-18). **Do not file until the final name is in ASC.** Replace
+"StoryCue" in the Nomination Name, Description and Helpful Details, and re-point the two
+martinapps.dev/storycue/ URLs if the path changes.
 
 ## Read this first: two decisions are built into this draft
 
@@ -11,10 +19,11 @@ Connect → Featuring Nominations. Form fields were taken from Apple's help page
    a Duo. Nominating it now would promise an editor something 1.0 can't show. That gets its own
    **App Enhancements** nomination once 1.1 is real (see the last section).
 2. **The publish window is Thanksgiving, not launch day.** Apple now recommends **3 weeks** of
-   lead time, up from the 2 weeks PLAN §6 assumed. Launch day, 10-23, is already under 3 weeks
-   away. Thanksgiving week is 6 weeks out, and it is the moment the app is actually for.
+   lead time, up from the 2 weeks PLAN §6 assumed. The 10-23 launch day in the 10-04 draft is gone
+   (1.0 was not submitted by 10-16), so the launch date now depends on the name and App Review.
+   Thanksgiving week is the moment the app is actually for.
 
-**File it by ~10-09** (STRATEGY S6 date). That gives about 5½ weeks before the window opens.
+**File it by 2026-10-26** (3 weeks before the 11-16 window opens), and only after the name is final.
 The draft can be saved without submitting it. Once it is submitted, the type can't be changed.
 
 ## Form fields
@@ -42,7 +51,7 @@ The draft can be saved without submitting it. Once it is submitted, the type can
 > Recordings stay on the iPhone until you export them. StoryCue has no account, no cloud, no
 > ads, no tracking, and no network requests at all. Its privacy label is Data Not Collected.
 >
-> StoryCue launches in late October. We're nominating it for Thanksgiving week, when families
+> StoryCue launches this fall. We're nominating it for Thanksgiving week, when families
 > sit down together and many people decide this is the year to record a grandparent.
 
 **Publish Date/Timeframe**: custom range **2026-11-16 → 2026-11-29** (the week before
@@ -60,7 +69,7 @@ Thanksgiving, which is 11-26, through the holiday weekend).
 | Supplemental Materials | see below |
 
 **Supplemental Materials** (up to 5 URLs):
-1. `https://martinapps.dev/storycue/privacy-policy.html` (live only after `storycue-pages` merges)
+1. `https://martinapps.dev/storycue/privacy-policy.html` (live since 2026-10-16, martinapps-site `cfaa378`)
 2. `https://martinapps.dev/storycue/support.html` (same)
 3. Optional: a TestFlight **public** link. That needs an External Testing group, and that group
    needs Beta App Review. Skip it unless Perry wants external testers anyway.
@@ -97,7 +106,8 @@ Thanksgiving, which is 11-26, through the holiday weekend).
       only the record controls. Do one large-text run on the device before filing.
 - [ ] **Pricing.** Apple's featuring page says editors favor freemium. The text above says
       nothing about price, so it holds whichever way the pricing decision goes.
-- [ ] The privacy and support URLs resolve (merge `storycue-pages` first).
+- [x] The privacy and support URLs resolve (`storycue-pages` merged 2026-10-16).
+- [ ] The name is final and matches ASC (see the blocker at the top).
 
 ## Second nomination, later: iPhone Duo (App Enhancements)
 
