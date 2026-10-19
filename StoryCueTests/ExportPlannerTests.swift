@@ -71,9 +71,9 @@ final class ExportPlannerTests: XCTestCase {
         XCTAssertEqual(
             result.outputs.map(\.fileName),
             [
-                "StoryCue - Grandparents - 2026-10-02 - Q01.mov",
-                "StoryCue - Grandparents - 2026-10-02 - Q02.mov",
-                "StoryCue - Grandparents - 2026-10-02 - Q03.mov",
+                "Tellfolk - Grandparents - 2026-10-02 - Q01.mov",
+                "Tellfolk - Grandparents - 2026-10-02 - Q02.mov",
+                "Tellfolk - Grandparents - 2026-10-02 - Q03.mov",
             ]
         )
         XCTAssertTrue(result.dropped.isEmpty)
@@ -93,8 +93,8 @@ final class ExportPlannerTests: XCTestCase {
         let result = plan(entries: entries, sizes: sizes)
 
         XCTAssertEqual(result.outputs.map(\.fileName), [
-            "StoryCue - Grandparents - 2026-10-02 - Q00.mov",
-            "StoryCue - Grandparents - 2026-10-02 - Q00 (2).mov",
+            "Tellfolk - Grandparents - 2026-10-02 - Q00.mov",
+            "Tellfolk - Grandparents - 2026-10-02 - Q00 (2).mov",
         ])
     }
 
@@ -120,7 +120,7 @@ final class ExportPlannerTests: XCTestCase {
             SegmentFiles.url(for: s3.id, in: segmentDirectory),
             SegmentFiles.url(for: s4.id, in: segmentDirectory),
         ])
-        XCTAssertEqual(result.outputs[0].fileName, "StoryCue - Grandparents - 2026-10-02.mov")
+        XCTAssertEqual(result.outputs[0].fileName, "Tellfolk - Grandparents - 2026-10-02.mov")
         XCTAssertTrue(result.dropped.isEmpty)
     }
 
@@ -256,7 +256,7 @@ final class ExportPlannerTests: XCTestCase {
             sessionDate: sessionDate,
             calendar: utcCalendar
         )
-        XCTAssertEqual(name, "StoryCue - Grandparents - 2026-10-02 - Q03.mov")
+        XCTAssertEqual(name, "Tellfolk - Grandparents - 2026-10-02 - Q03.mov")
     }
 
     func testFileNameUnknownQuestionIsQ00() {
@@ -266,7 +266,7 @@ final class ExportPlannerTests: XCTestCase {
             sessionDate: sessionDate,
             calendar: utcCalendar
         )
-        XCTAssertEqual(name, "StoryCue - Grandparents - 2026-10-02 - Q00.mov")
+        XCTAssertEqual(name, "Tellfolk - Grandparents - 2026-10-02 - Q00.mov")
     }
 
     func testFileNameSanitizesReservedCharacters() {
@@ -283,7 +283,7 @@ final class ExportPlannerTests: XCTestCase {
             sessionDate: sessionDate,
             calendar: utcCalendar
         )
-        XCTAssertEqual(name, "StoryCue - A-B-C-D-E-F-G-H-I-J- - 2026-10-02 - Q01.mov")
+        XCTAssertEqual(name, "Tellfolk - A-B-C-D-E-F-G-H-I-J- - 2026-10-02 - Q01.mov")
         for banned in ["/", "\\", ":", "*", "?", "\"", "<", ">", "|"] {
             XCTAssertFalse(name.contains(banned), "name must not contain \(banned)")
         }
@@ -306,8 +306,8 @@ final class ExportPlannerTests: XCTestCase {
             deck: deck, questionID: nil, sessionDate: instant, calendar: newYork
         )
 
-        XCTAssertEqual(utcName, "StoryCue - Grandparents - 2026-10-02.mov")
-        XCTAssertEqual(newYorkName, "StoryCue - Grandparents - 2026-10-01.mov")
+        XCTAssertEqual(utcName, "Tellfolk - Grandparents - 2026-10-02.mov")
+        XCTAssertEqual(newYorkName, "Tellfolk - Grandparents - 2026-10-01.mov")
         XCTAssertNotEqual(utcName, newYorkName)
     }
 }

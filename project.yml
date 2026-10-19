@@ -54,7 +54,7 @@ targets:
     info:
       path: StoryCue/Info.plist
       properties:
-        CFBundleDisplayName: StoryCue
+        CFBundleDisplayName: Tellfolk
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -63,9 +63,9 @@ targets:
         # The whole app is portrait in 1.0 (S2a portrait lock).
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSCameraUsageDescription: "StoryCue records video of the person you are interviewing. Recordings stay on this phone."
-        NSMicrophoneUsageDescription: "StoryCue records the voice of the person you are interviewing. Recordings stay on this phone."
-        NSPhotoLibraryAddUsageDescription: "StoryCue saves the clips you choose to export to your Photos library."
+        NSCameraUsageDescription: "Tellfolk records video of the person you are interviewing. Recordings stay on this phone."
+        NSMicrophoneUsageDescription: "Tellfolk records the voice of the person you are interviewing. Recordings stay on this phone."
+        NSPhotoLibraryAddUsageDescription: "Tellfolk saves the clips you choose to export to your Photos library."
 
   StoryCueTests:
     type: bundle.unit-test

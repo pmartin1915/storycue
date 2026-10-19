@@ -11,7 +11,7 @@ struct DroppedSegment: Equatable, Sendable {
 }
 
 struct PlannedOutput: Equatable, Sendable {
-    let fileName: String            // e.g. "StoryCue - Grandparents - 2026-10-02 - Q03.mov"
+    let fileName: String            // e.g. "Tellfolk - Grandparents - 2026-10-02 - Q03.mov"
     let questionIDs: [String]       // one for .perClip; manifest order for .wholeSession
     let sources: [URL]              // SegmentFiles-derived, in stitch order
     let flaggedSegmentIDs: [UUID]   // .failed(kept: true) segments among `sources`
@@ -125,7 +125,7 @@ enum ExportPlanner {
         return ExportPlan(outputs: outputs, dropped: dropped, totalSourceBytes: totalSourceBytes)
     }
 
-    /// "StoryCue - <deck title> - <yyyy-MM-dd>" + (" - Q<nn>" for .perClip) + ".mov".
+    /// "Tellfolk - <deck title> - <yyyy-MM-dd>" + (" - Q<nn>" for .perClip) + ".mov".
     /// nn = 1-based index of the question in `deck.questions`, zero-padded to 2 digits.
     /// A questionID not found in the deck gets "Q00". Characters in / \ : * ? " < > | and
     /// control characters are replaced with "-". The date is formatted with the injected
@@ -137,7 +137,7 @@ enum ExportPlanner {
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
 
-        var name = "StoryCue - \(deck.title) - \(formatter.string(from: sessionDate))"
+        var name = "Tellfolk - \(deck.title) - \(formatter.string(from: sessionDate))"
         if let questionID {
             let number: String
             if let index = deck.questions.firstIndex(where: { $0.id == questionID }) {
