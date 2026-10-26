@@ -108,7 +108,14 @@ Thanksgiving, which is 11-26, through the holiday weekend).
 - [ ] **Pricing.** Apple's featuring page says editors favor freemium. The text above says
       nothing about price, so it holds whichever way the pricing decision goes.
 - [x] The privacy and support URLs resolve (`storycue-pages` merged 2026-10-16).
-- [ ] ASC app name is changed to Tellfolk and matches this text (see the name note at the top).
+- [x] ASC app name is changed to Tellfolk and matches this text (see the name note at the top). Verified 2026-10-25.
+
+## Filed as a draft 2026-10-25
+
+Saved, not submitted, in ASC (nomination id `a85e1c52-8974-4a12-baba-a9a34363e439`). The form takes a single
+publish date, not a range, so it says 2026-11-16. Apple caps Description at 1000 characters and Helpful
+Details at 500, so both were shortened from the text above with no new claims. Perry's "why I built it"
+sentence is unchanged. The ASC draft is now the canonical text. Supplemental links: support and privacy pages.
 
 ## Second nomination, later: iPhone Duo (App Enhancements)
 
