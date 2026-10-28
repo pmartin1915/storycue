@@ -17,7 +17,7 @@ Tellfolk (formerly StoryCue) 1.0 was added for review by Perry on 2026-10-19 (AS
 Status (moved out of Waiting on Perry, sitting 2026-10-25): **Tellfolk 1.0 submitted for review (2026-10-19).** Name check was exact-match USPTO + App Store only, not legal clearance (real USPTO search done 2026-10-16). Build 15.1 (deploy run `39204181253`, rename PR #18 `4477368`).
 
 ## Waiting on Perry
-1. Featuring nomination: DRAFT SAVED in ASC 2026-10-25 (nomination a85e1c52; App Launch, publish date 2026-11-16; text trimmed to Apple's 1000/500-char limits, see docs/S6-FEATURING-NOMINATION.md). Perry reads it and presses Submit Tue 2026-10-27, 7 PM (Perry To-Do; not done 10-26, moved at sitting 2026-10-27).
+1. Featuring nomination: DRAFT SAVED in ASC 2026-10-25 (nomination a85e1c52; App Launch, publish date 2026-11-16; text trimmed to Apple's 1000/500-char limits, see docs/S6-FEATURING-NOMINATION.md). Perry reads it and presses Submit Tue 2026-10-27, 7 PM (Perry To-Do; not done 10-26, moved at sitting 2026-10-27). Moved to Wed 2026-10-28 7 PM on Perry To-Do. (deferred to 2026-10-28, sitting 2026-10-27)
 2. Later: free + one-time unlock for 1.x (parked for 1.1, sitting 2026-10-16; undated, the 2027-01-15 date was model-set and removed, Perry 2026-10-19; `isIncluded` bit exists in the deck model); optional real-camera recorder screenshot and captioned screenshots; incoming-call-mid-clip test was deferred in S5 rung 4b.
 
 ## Hard dates
