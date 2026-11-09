@@ -191,6 +191,7 @@ jobs:
             -parallel-testing-enabled NO \
             -only-testing:StoryCueUITests/ScreenshotTests/testCaptureDarkScreenshots \
             -only-testing:StoryCueUITests/ScreenshotTests/testCaptureAX5Screenshots \
+            -only-testing:StoryCueUITests/ScreenshotTests/testCaptureComeupPlaybackAndExport \
             -resultBundlePath "$RUNNER_TEMP/review.xcresult" \
             STORYCUE_DUO_CONDITIONS="" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
@@ -217,6 +218,9 @@ jobs:
           ]
           # Taken only when the AX5 card fits (otherwise it scrolls and has no handle).
           optional = ["ax5-04-question-bottom"]
+          # comeup 2026-11-09 review shots: optional so a new test can't fail the step's
+          # attachment check; read the test log for its pass/fail.
+          optional += ["comeup-01-player-unavailable-light", "comeup-02-export-choosing"]
 
           try:
               with open(manifest_path, encoding="utf-8") as handle:

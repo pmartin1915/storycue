@@ -17,6 +17,8 @@ final class ExportModel {
     private(set) var phase: Phase = .choosing
     var unit: ExportUnit = .perClip
     let sessionID: UUID
+    /// Where the last export went, so a failed one can be retried with one tap.
+    private(set) var lastDestination: ExportDestination?
 
     private let library: Library
     private let exporter: Exporter
@@ -47,6 +49,7 @@ final class ExportModel {
         }
         guard let record = library.record(id: sessionID), let deck = record.deck else { return }
 
+        lastDestination = destination
         library.beginExport(sessionID)
         phase = .running(done: 0, total: 0)
 
@@ -80,6 +83,12 @@ final class ExportModel {
 
     func cancel() {
         task?.cancel()
+    }
+
+    /// Re-runs a failed export to the same destination. A no-op in any other phase.
+    func retry() {
+        guard case .failed = phase, let lastDestination else { return }
+        start(lastDestination)
     }
 
     /// Called when the share sheet closes (or the export sheet goes away while sharing).

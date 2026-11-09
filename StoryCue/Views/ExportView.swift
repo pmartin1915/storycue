@@ -30,6 +30,14 @@ struct ExportView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .interactiveDismissDisabled(isRunning)
+        // The export can run long with the phone held away; a distinct tap says how it ended.
+        .sensoryFeedback(trigger: model.phase) { _, new in
+            switch new {
+            case .finished: SensoryFeedback.success
+            case .failed: SensoryFeedback.error
+            case .choosing, .running, .sharing: nil
+            }
+        }
         .onDisappear {
             switch model.phase {
             case .running:
@@ -72,20 +80,57 @@ struct ExportView: View {
             // The share sheet is up; this is what shows behind it.
             Text(UICopy.exporting(0, 0))
                 .font(.body)
-        case let .finished(message), let .failed(message):
-            VStack(alignment: .leading, spacing: 20) {
+        case let .finished(message):
+            outcome(message, isFailure: false)
+        case let .failed(message):
+            outcome(message, isFailure: true)
+        }
+    }
+
+    /// Success and failure look different (symbol, not color alone) and failure offers a retry.
+    private func outcome(_ message: String, isFailure: Bool) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xl) {
+            HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.m) {
+                Image(systemName: isFailure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(isFailure ? Color.orange : Color.accentColor)
+                    .accessibilityHidden(true)
                 Text(message)
                     .font(.body)
-                Button(UICopy.done) { dismiss() }
-                    .buttonStyle(.borderedProminent)
-                    .font(.title2)
-                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(isFailure ? "exportFailed" : "exportFinished")
+            if isFailure {
+                Button {
+                    model.retry()
+                } label: {
+                    Text(UICopy.tryAgain)
+                        .frame(maxWidth: .infinity)
+                }
+                .primaryAction()
+                .accessibilityIdentifier("exportTryAgain")
+                Button {
+                    dismiss()
+                } label: {
+                    Text(UICopy.done)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+            } else {
+                Button {
+                    dismiss()
+                } label: {
+                    Text(UICopy.done)
+                        .frame(maxWidth: .infinity)
+                }
+                .primaryAction()
             }
         }
     }
 
     private var choosing: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xl) {
             // Segments can't wrap, so at accessibility sizes the choice becomes a menu button.
             if dynamicTypeSize.isAccessibilitySize {
                 unitPicker
@@ -97,15 +142,22 @@ struct ExportView: View {
                     .frame(minHeight: 44)
             }
 
-            Button(UICopy.exportToFiles) { model.start(.files) }
-                .buttonStyle(.borderedProminent)
-                .font(.title2)
-                .frame(maxWidth: .infinity, minHeight: 44)
+            Button {
+                model.start(.files)
+            } label: {
+                Text(UICopy.exportToFiles)
+                    .frame(maxWidth: .infinity)
+            }
+            .primaryAction()
 
-            Button(UICopy.exportToPhotos) { model.start(.photos) }
-                .buttonStyle(.bordered)
-                .font(.title2)
-                .frame(maxWidth: .infinity, minHeight: 44)
+            Button {
+                model.start(.photos)
+            } label: {
+                Text(UICopy.exportToPhotos)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
         }
     }
 
@@ -118,7 +170,7 @@ struct ExportView: View {
     }
 
     private func running(done: Int, total: Int) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xl) {
             if total == 0 {
                 ProgressView()
             } else {
@@ -126,10 +178,14 @@ struct ExportView: View {
             }
             Text(UICopy.exporting(done, total))
                 .font(.body)
-            Button(UICopy.cancel) { model.cancel() }
-                .buttonStyle(.bordered)
-                .font(.title2)
-                .frame(maxWidth: .infinity, minHeight: 44)
+            Button {
+                model.cancel()
+            } label: {
+                Text(UICopy.cancel)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
         }
     }
 }
