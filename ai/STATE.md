@@ -1,6 +1,6 @@
 # STATE: storycue (NOW)
 
-**Updated 2026-10-19.** Keep this to one screen. Update it in the same commit as any change of state, and replace lines rather than appending dated entries. Older state is in `ai/archive/STATE-through-2026-10-04.md`; handoffs live in `docs/HANDOFF-*.md` (newest: `docs/HANDOFF-2026-10-04-s6-icon-card.md`).
+**Updated 2026-11-09.** Keep this to one screen. Update it in the same commit as any change of state, and replace lines rather than appending dated entries. Older state is in `ai/archive/STATE-through-2026-10-04.md`; handoffs live in `docs/HANDOFF-*.md` (newest: `docs/HANDOFF-2026-10-04-s6-icon-card.md`).
 
 ## Critical path
 Tellfolk (formerly StoryCue) 1.0 was added for review by Perry on 2026-10-19 (ASC status: Waiting for Review; build 15.1 attached; unverified in ASC since the click). Next: watch Apple mail (to:pmartin1912@) for review status; if Apple rejects the name, the fallback is a rename in ASC before approval. Owner: Perry.
@@ -8,7 +8,7 @@ Tellfolk (formerly StoryCue) 1.0 was added for review by Perry on 2026-10-19 (AS
 ## Live workstreams
 | Stream | State | Next |
 |---|---|---|
-| App code | main `34551a9`; S0-S4, S2c, S2d, storage sweep (PR #8 `e0122f9`), privacy manifest (#11 `227470a`), free-drag card (#16 `02c5969`), speech-bubble icon (#15 `7f68cba`), Recording pill (#17 `a93cb62`) all merged. CI 269/269 on #17. No open PRs, no CI runs since 2026-10-05 | Nothing queued; only changes if device checks on 14.1 find something |
+| App code | comeup pass 2026-11-09 (Sonnet/Kimi/Sol review, `ai/comeup/2026-11-09/`): PRs #19-#22 merged to main (#22 = Perry's veteran picks V1-V5, `cecd196`). All for the NEXT version; 1.0 in review is untouched | Next TestFlight build: Perry's device look (amber pill near 10 min, toasts, VoiceOver countdown); second comeup pass takes the audit flags and the Dynamic Type caps (scorecard) |
 | TestFlight | 1.0 (14.1) = deploy run `37258274920` from main `f2332ea`, Xcode 27A266a | Perry device checks (Reduce Motion morph, VoiceOver, haptics, serif over camera, drag feel) |
 | S6 listing | metadata in `docs/S6-ASC-METADATA.md`; support/privacy pages on martinapps-site branch `storycue-pages` `cd10b5d`, MERGED and live (martinapps-site `cfaa378`, 2026-10-16) | None; support and privacy URLs resolve |
 | Featuring nomination | drafted `docs/S6-FEATURING-NOMINATION.md` (`0e8fe1b`), App Launch window 11-16..11-29 | "Why I built it" line DONE 2026-10-19 (in the doc); Perry files; week of 2026-10-19, Claude prefills the nomination (was targeted ~10-09; filed status unverified, last seen 2026-10-04) |
@@ -17,6 +17,7 @@ Tellfolk (formerly StoryCue) 1.0 was added for review by Perry on 2026-10-19 (AS
 Status (moved out of Waiting on Perry, sitting 2026-10-25): **Tellfolk 1.0 submitted for review (2026-10-19).** Name check was exact-match USPTO + App Store only, not legal clearance (real USPTO search done 2026-10-16). Build 15.1 (deploy run `39204181253`, rename PR #18 `4477368`).
 
 ## Waiting on Perry
+1. Device checks from comeup 2026-11-09 (next TestFlight, no date): share sheet Cancel vs Save to Files message (IDEAS C5), record -> play -> record keeps audio (C24), recorder text contrast the CI audit flagged (scorecard M6).
 2. Later: free + one-time unlock for 1.x (parked for 1.1, sitting 2026-10-16; undated, the 2027-01-15 date was model-set and removed, Perry 2026-10-19; `isIncluded` bit exists in the deck model); optional real-camera recorder screenshot and captioned screenshots; incoming-call-mid-clip test was deferred in S5 rung 4b.
 
 ## Hard dates
