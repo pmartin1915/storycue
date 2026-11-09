@@ -17,6 +17,21 @@ extension ComeupReviewTests {
         }
     }
 
+    /// M7, readable: xcodebuild does not print XCTApplicationLaunchMetric numbers, so time
+    /// launch-to-deck-picker by hand and print it for the log ("LAUNCH-TO-DECKS").
+    func testComeupLaunchToDecksTiming() {
+        for run in 1...3 {
+            let app = XCUIApplication()
+            app.launchArguments = ["-StoryCueDemo"]
+            let start = Date()
+            app.launch()
+            let decks = app.descendants(matching: .any)["deck.grandparents"].firstMatch
+            XCTAssertTrue(decks.waitForExistence(timeout: 10), "deck picker did not appear")
+            print("LAUNCH-TO-DECKS[\(run)] \(String(format: "%.2f", Date().timeIntervalSince(start))) s")
+            app.terminate()
+        }
+    }
+
     /// M6: Apple's automated accessibility audit on the deck picker, consent card and recorder.
     /// Each issue is printed so the log names it, then fails the test.
     func testComeupAccessibilityAudit() throws {
@@ -65,10 +80,14 @@ extension ComeupReviewTests {
         wait(for: [ready], timeout: 10)
         XCTAssertTrue(recordButton.isHittable, "AX5: Record is not hittable")
         XCTAssertTrue(app.buttons["doneButton"].firstMatch.isHittable, "AX5: Done is not hittable")
+        // At AX5 the card usually scrolls: its own frame is the full scroll content, so compare
+        // the visible scroll view instead (a false overlap otherwise, review run 2026-11-09).
         let questionPanel = app.descendants(matching: .any)["questionPanel"].firstMatch
         if questionPanel.exists {
+            let scroller = app.scrollViews.containing(.any, identifier: "questionPanel").firstMatch
+            let visible = scroller.exists ? scroller.frame : questionPanel.frame
             XCTAssertFalse(
-                questionPanel.frame.intersects(recordButton.frame),
+                visible.intersects(recordButton.frame),
                 "AX5: the question card overlaps Record"
             )
         }
@@ -77,7 +96,8 @@ extension ComeupReviewTests {
 
     private func audit(_ app: XCUIApplication, screen: String) throws {
         try app.performAccessibilityAudit { issue in
-            print("AUDIT [\(screen)] \(issue.auditType): \(issue.compactDescription) -- \(issue.detailedDescription)")
+            let element = issue.element.map { "\($0.elementType.rawValue) id=\($0.identifier) label=\($0.label)" } ?? "?"
+            print("AUDIT [\(screen)] \(issue.auditType.rawValue) \(issue.compactDescription) | \(element)")
             return false
         }
     }
