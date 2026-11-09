@@ -281,6 +281,10 @@ struct RecorderView: View {
                 Text(timerText)
                     .monospacedDigit()
             }
+            .lineLimit(1)
+            // The toolbar item proposes less than the pill needs and the word truncated to
+            // "Recordi..." (comeup-04 review shot, 2026-11-09): take the ideal width instead.
+            .fixedSize()
             .font(.subheadline)
             .foregroundStyle(ink)
             .padding(.horizontal, 10)
