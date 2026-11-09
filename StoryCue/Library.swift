@@ -458,6 +458,12 @@ final class Library {
         return position
     }
 
+    /// True once the clip's keep/delete decision has landed (false while it is still
+    /// undecided, including after a delete that aborted because the file survived).
+    func isDecided(_ clip: RecoveredClip) -> Bool {
+        canDecide(clip) == nil
+    }
+
     func keep(_ clip: RecoveredClip) async {
         guard let position = canDecide(clip) else { return }
         sessions[position.session].clips[position.clip].segments[position.segment].outcome = .failed(kept: true)

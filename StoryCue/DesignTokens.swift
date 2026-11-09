@@ -43,6 +43,10 @@ enum DesignTokens {
     static let overCameraFill = Color.black.opacity(0.7)
     /// The recording pill: darker than system red so white text clears 4.5:1.
     static let recordingFill = Color(red: 0.78, green: 0.10, blue: 0.10)
+    /// The recording pill in the last minute before the answer cap: amber with black ink
+    /// (about 12:1), always paired with the "1 min left" word.
+    static let capWarningFill = Color(red: 1.0, green: 0.76, blue: 0.03)
+    static let capWarningInk = Color.black
     #if DEBUG
     static let demoBackdropTop = Color(red: 0.20, green: 0.13, blue: 0.09)
     static let demoBackdropBottom = Color(red: 0.06, green: 0.04, blue: 0.03)

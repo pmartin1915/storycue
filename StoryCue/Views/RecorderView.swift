@@ -56,11 +56,11 @@ struct RecorderView: View {
                 countdownOverlay(countdownText)
             }
         }
-        .sensoryFeedback(.impact(weight: .medium), trigger: presentation.primary) { old, new in
+        .sensoryFeedback(Haptics.recordToggle, trigger: presentation.primary) { old, new in
             (old == .pause) != (new == .pause)
         }
-        .sensoryFeedback(.selection, trigger: store.state.questionIndex)
-        .sensoryFeedback(.selection, trigger: questionDrops)
+        .sensoryFeedback(Haptics.step, trigger: store.state.questionIndex)
+        .sensoryFeedback(Haptics.step, trigger: questionDrops)
         .task { store.startTicker() }
         .onDisappear { cancelCountdown() }
         .navigationBarBackButtonHidden(true)
@@ -104,6 +104,18 @@ struct RecorderView: View {
         .onChange(of: presentation.banner) { _, new in
             if let text = bannerString(new) { announce(text) }
         }
+        .onChange(of: nearsCap) { _, isNear in
+            if isNear { announce(UICopy.nearCapAnnouncement) }
+        }
+    }
+
+    /// The last minute before the ten-minute answer cap pauses the take.
+    private var nearsCap: Bool {
+        RecorderPresentation.nearsCap(
+            elapsed: store.elapsedInSegment,
+            cap: SessionStore.segmentCap,
+            isRecording: presentation.showsRecordingDot
+        )
     }
 
     private func announce(_ text: String) {
@@ -257,24 +269,31 @@ struct RecorderView: View {
     @ViewBuilder
     private var recordingIndicator: some View {
         if presentation.showsRecordingDot, let timerText = presentation.timerText {
+            // Near the cap the pill turns amber AND says so in words (not color alone).
+            let word = nearsCap ? UICopy.nearCapIndicator : UICopy.recordingIndicator
+            let ink = nearsCap ? DesignTokens.capWarningInk : Color.white
             HStack(spacing: 6) {
                 Circle()
-                    .fill(.white)
+                    .fill(ink)
                     .frame(width: 8, height: 8)
-                Text(UICopy.recordingIndicator)
+                Text(word)
                     .fontWeight(.semibold)
                 Text(timerText)
                     .monospacedDigit()
             }
+            .lineLimit(1)
+            // The toolbar item proposes less than the pill needs and the word truncated to
+            // "Recordi..." (comeup-04 review shot, 2026-11-09): take the ideal width instead.
+            .fixedSize()
             .font(.subheadline)
-            .foregroundStyle(.white)
+            .foregroundStyle(ink)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
-            .background(DesignTokens.recordingFill, in: Capsule())
+            .background(nearsCap ? DesignTokens.capWarningFill : DesignTokens.recordingFill, in: Capsule())
             // The nav bar has a fixed height; past AX1 the pill would clip.
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(UICopy.recordingIndicator), \(timerText)")
+            .accessibilityLabel("\(word), \(timerText)")
             .accessibilityIdentifier("recordingIndicator")
         }
     }

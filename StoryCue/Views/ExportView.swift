@@ -33,8 +33,8 @@ struct ExportView: View {
         // The export can run long with the phone held away; a distinct tap says how it ended.
         .sensoryFeedback(trigger: model.phase) { _, new in
             switch new {
-            case .finished: SensoryFeedback.success
-            case .failed: SensoryFeedback.error
+            case .finished: Haptics.success
+            case .failed: Haptics.failure
             case .choosing, .running, .sharing: nil
             }
         }
@@ -113,7 +113,7 @@ struct ExportView: View {
                     dismiss()
                 } label: {
                     Text(UICopy.done)
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
@@ -154,7 +154,7 @@ struct ExportView: View {
                 model.start(.photos)
             } label: {
                 Text(UICopy.exportToPhotos)
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
@@ -182,7 +182,7 @@ struct ExportView: View {
                 model.cancel()
             } label: {
                 Text(UICopy.cancel)
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .controlSize(.large)

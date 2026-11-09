@@ -32,7 +32,7 @@ struct SessionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         // Only the post-recording screen celebrates; opening a session from Recordings doesn't.
         .onAppear { if showsCompletion { didAppear = true } }
-        .sensoryFeedback(.success, trigger: didAppear)
+        .sensoryFeedback(Haptics.success, trigger: didAppear)
     }
 
     private func isShown(_ clip: Clip) -> Bool {
@@ -107,7 +107,10 @@ struct SessionDetailView: View {
             Button(UICopy.deleteSession, role: .destructive) {
                 Task {
                     let deleted = await library.delete(sessionID: sessionID)
-                    if deleted { dismiss() }
+                    if deleted {
+                        model.showToast(UICopy.recordingDeleted)
+                        dismiss()
+                    }
                 }
             }
         }
@@ -123,7 +126,10 @@ struct SessionDetailView: View {
             presenting: pendingClipDelete
         ) { clip in
             Button(UICopy.deleteClip, role: .destructive) {
-                Task { await library.discard(clip) }
+                Task {
+                    await library.discard(clip)
+                    if library.isDecided(clip) { model.showToast(UICopy.answerDeleted) }
+                }
             }
         }
         .fullScreenCover(item: $playing) { answer in
@@ -190,7 +196,10 @@ struct SessionDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button(UICopy.keep) {
-                Task { await library.keep(clip) }
+                Task {
+                    await library.keep(clip)
+                    if library.isDecided(clip) { model.showToast(UICopy.answerKept) }
+                }
             }
             .buttonStyle(.bordered)
             .frame(maxWidth: .infinity, minHeight: 44)

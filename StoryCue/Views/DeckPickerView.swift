@@ -34,7 +34,13 @@ struct DeckPickerView: View {
                 NavigationLink {
                     LibraryView(model: model)
                 } label: {
-                    Text(UICopy.libraryButton)
+                    // While the library loads, a spinner says the button is on its way.
+                    HStack(spacing: DesignTokens.Spacing.xs) {
+                        if !model.library.isLoaded {
+                            ProgressView()
+                        }
+                        Text(UICopy.libraryButton)
+                    }
                 }
                 .disabled(!model.library.isLoaded)
                 .accessibilityIdentifier("libraryButton")
