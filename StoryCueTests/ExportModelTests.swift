@@ -194,6 +194,29 @@ final class ExportModelTests: XCTestCase {
         XCTAssertTrue(fixture.library.exportingSessionIDs.isEmpty)
     }
 
+    func testRetryReRunsAFailedExportToTheSameDestination() async throws {
+        let fixture = try await makeFixture(layout: [[savedOutcome]], photosStatus: .denied)
+        let model = fixture.model
+
+        model.retry()   // nothing has run yet: a no-op
+        XCTAssertEqual(model.phase, .choosing)
+
+        model.start(.photos)
+        await waitUntilSettled(model)
+        guard case .failed = model.phase else {
+            return XCTFail("expected .failed, got \(model.phase)")
+        }
+        XCTAssertEqual(model.lastDestination, .photos)
+
+        model.retry()
+        XCTAssertTrue(fixture.library.exportingSessionIDs.contains(fixture.sessionID))
+        await waitUntilSettled(model)
+        guard case .failed = model.phase else {
+            return XCTFail("expected .failed again (Photos still denied), got \(model.phase)")
+        }
+        XCTAssertTrue(fixture.library.exportingSessionIDs.isEmpty)
+    }
+
     func testSummaryIncludesDroppedAndFlagged() async throws {
         // Clip 1: two saved segments, the second unreadable to the stitcher.
         // Clip 2: one kept-failed segment, so its output is flagged.

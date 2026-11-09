@@ -119,12 +119,12 @@ enum UICopy {
     }
     static let lowSpaceConsentNote = "Your iPhone is low on space. Free some up before a long conversation."
 
-    static let recoveredHeader = "Recovered clips"
+    static let recoveredHeader = "Recovered answers"
     static let recoveredExplainer = "Tellfolk closed while these were recording. They may end early. Keep them or delete them."
     static let recoveredUndecided = "Recovered after Tellfolk closed. It may end early."
     static let keep = "Keep"
-    static let deleteClip = "Delete clip"
-    static let deleteClipConfirm = "Delete this clip? This can't be undone."
+    static let deleteClip = "Delete answer"
+    static let deleteClipConfirm = "Delete this answer? This can't be undone."
     static let deleteSession = "Delete recording"
     static let deleteSessionConfirm = "Delete this whole recording? This can't be undone."
     static let sessionGone = "This recording was deleted."
@@ -160,4 +160,11 @@ enum UICopy {
         n == 1 ? "You recorded 1 answer" : "You recorded \(n) answers"
     }
     static let completionBody = "They're saved on this iPhone. Tap play to watch one."
+    static let playbackAudioBusy = "Tellfolk can't play sound right now. Close other apps that are playing audio, then try again."
+    static let captionExpandHint = "Shows the whole question."
+    static let captionCollapseHint = "Shortens the question to one line."
+
+    // MARK: - comeup 2026-11-09: export outcome
+
+    static let tryAgain = "Try again"
 }
