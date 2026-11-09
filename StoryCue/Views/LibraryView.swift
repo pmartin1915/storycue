@@ -15,6 +15,20 @@ struct LibraryView: View {
     var body: some View {
         let recovered = library.recovered
         return List {
+            if !library.isLoaded {
+                // Placeholder rows in the shape of real ones until the library has loaded.
+                Section {
+                    ForEach(0..<3, id: \.self) { _ in
+                        DeckRowLabel(deckID: "", title: UICopy.libraryTitle) {
+                            Text(UICopy.sessionSubtitle(.now, count: 3))
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .redacted(reason: .placeholder)
+                .accessibilityHidden(true)
+            }
             if !recovered.isEmpty {
                 Section {
                     ForEach(recovered) { clip in
@@ -44,7 +58,7 @@ struct LibraryView: View {
             }
         }
         .overlay {
-            if library.sessions.isEmpty && recovered.isEmpty {
+            if library.isLoaded && library.sessions.isEmpty && recovered.isEmpty {
                 ContentUnavailableView {
                     Label(UICopy.libraryEmptyTitle, systemImage: "video.slash")
                 } description: {
@@ -69,7 +83,11 @@ struct LibraryView: View {
             presenting: pendingSessionDelete
         ) { sessionID in
             Button(UICopy.deleteSession, role: .destructive) {
-                Task { await library.delete(sessionID: sessionID) }
+                Task {
+                    if await library.delete(sessionID: sessionID) {
+                        model.showToast(UICopy.recordingDeleted)
+                    }
+                }
             }
         }
         .confirmationDialog(
@@ -84,7 +102,10 @@ struct LibraryView: View {
             presenting: pendingClipDelete
         ) { clip in
             Button(UICopy.deleteClip, role: .destructive) {
-                Task { await library.discard(clip) }
+                Task {
+                    await library.discard(clip)
+                    if library.isDecided(clip) { model.showToast(UICopy.answerDeleted) }
+                }
             }
         }
     }
@@ -107,7 +128,10 @@ struct LibraryView: View {
                 .foregroundStyle(.secondary)
             VStack(spacing: 8) {
                 Button(UICopy.keep) {
-                    Task { await library.keep(clip) }
+                    Task {
+                        await library.keep(clip)
+                        if library.isDecided(clip) { model.showToast(UICopy.answerKept) }
+                    }
                 }
                 .buttonStyle(.bordered)
                 .frame(maxWidth: .infinity, minHeight: 44)

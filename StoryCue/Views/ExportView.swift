@@ -33,8 +33,8 @@ struct ExportView: View {
         // The export can run long with the phone held away; a distinct tap says how it ended.
         .sensoryFeedback(trigger: model.phase) { _, new in
             switch new {
-            case .finished: SensoryFeedback.success
-            case .failed: SensoryFeedback.error
+            case .finished: Haptics.success
+            case .failed: Haptics.failure
             case .choosing, .running, .sharing: nil
             }
         }

@@ -59,6 +59,14 @@ final class StyleLintTests: XCTestCase {
         )
     }
 
+    /// comeup 2026-11-09 V5: haptics come only from the Haptics catalog.
+    func testNoLiteralHapticsOutsideCatalog() throws {
+        try assertNoSourceMatch(
+            regex: #"\.sensoryFeedback\(\s*\."#,
+            excluding: ["Haptics.swift"]
+        )
+    }
+
     func testAccentContrast() throws {
         let accent = try assetColors(named: "AccentColor")
         let onAccent = try assetColors(named: "OnAccent")

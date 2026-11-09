@@ -18,6 +18,17 @@ final class AppModel {
     /// The session `endSession` just finished, when finish left a keep-worthy record.
     /// RootView binds this to a `navigationDestination(item:)`; `beginSession` clears it.
     var finishedSessionID: UUID?
+    /// A short confirmation shown at the bottom of whatever screen is up (RootView), then
+    /// cleared after a few seconds. A new one replaces the old.
+    struct Toast: Equatable, Identifiable {
+        let id = UUID()
+        let text: String
+    }
+    var toast: Toast?
+
+    func showToast(_ text: String) {
+        toast = Toast(text: text)
+    }
     /// The shutdown + finish of the session `endSession` just closed. `beginSession` waits for
     /// it, so the camera is released and the old session stays protected until finish lands.
     @ObservationIgnored private var ending: Task<Void, Never>?
@@ -269,6 +280,9 @@ final class AppModel {
         // also waits on `ending`, and its continuation may resume first and set `active`.
         if self.active == nil, library.record(id: id) != nil {   // self.: `active` here is the unwrapped local
             finishedSessionID = id
+        } else if self.active == nil {
+            // finish kept nothing: say so, instead of landing back on the consent card in silence.
+            showToast(UICopy.nothingSaved)
         }
         return true
     }

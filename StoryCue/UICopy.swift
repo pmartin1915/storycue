@@ -167,4 +167,13 @@ enum UICopy {
     // MARK: - comeup 2026-11-09: export outcome
 
     static let tryAgain = "Try again"
+
+    // MARK: - comeup 2026-11-09: Perry's veteran picks (V1, V2, V4)
+
+    static let nearCapIndicator = "1 min left"
+    static let nearCapAnnouncement = "One minute left on this answer. Recording pauses at ten minutes."
+    static let nothingSaved = "Nothing was saved."
+    static let answerKept = "Answer kept"
+    static let answerDeleted = "Answer deleted"
+    static let recordingDeleted = "Recording deleted"
 }

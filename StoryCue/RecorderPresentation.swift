@@ -138,6 +138,16 @@ struct RecorderPresentation: Equatable {
     }
 }
 
+extension RecorderPresentation {
+    /// How long before the answer cap the recording pill warns.
+    static let capWarningLead: TimeInterval = 60
+
+    /// True in the last `capWarningLead` seconds before `cap`, only while recording.
+    static func nearsCap(elapsed: TimeInterval, cap: TimeInterval, isRecording: Bool) -> Bool {
+        isRecording && elapsed >= cap - capWarningLead
+    }
+}
+
 enum TimerFormat {
     /// Count-up. "0:00", "0:59", "1:00", "9:59", "10:00", "61:05". Never negative
     /// (clamps at 0), never hours. Floors fractional seconds.

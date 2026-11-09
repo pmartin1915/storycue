@@ -350,6 +350,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(ended)
         XCTAssertTrue(model.library.sessions.isEmpty)
         XCTAssertNil(model.finishedSessionID)
+        XCTAssertEqual(model.toast?.text, UICopy.nothingSaved)
     }
 
     func testBeginSessionClearsFinishedSessionID() async {
