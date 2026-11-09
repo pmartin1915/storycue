@@ -17,9 +17,9 @@ Before = mean of the three seats' scores (Sol's copy deduction partly rested on 
 
 ## Shipped (all merged to main with `--merge`, CI green, `reviewer` agent clean before each commit)
 - #19 playback and export state clarity (C1-C4, C6-C8) - merge `8f78c92`
-- #20 recorder accessibility and loading clarity (C9-C14)
+- #20 recorder accessibility and loading clarity (C9-C14) - merge `acc0891`
 - #21 harness: launch metric, accessibility audit, AX5 reachability (C15, C16) - merge `6c07398`
-- #22 Perry's veteran picks V1-V5, plus two defects the review shots found: recording pill truncated to "Recordi..." (pre-existing), toast capsule invisible on light screens; harness fixes. State: see the PR (merged after its rerun is green)
+- #22 Perry's veteran picks V1-V5, plus two defects the review shots found: recording pill truncated to "Recordi..." (pre-existing), toast capsule invisible on light screens; harness fixes - merge `cecd196`
 
 None of this is in the build in review (1.0, publish 11-16); it lands in the next version.
 
@@ -36,7 +36,7 @@ C5 share-sheet cancel, C21 Dynamic Type caps, C22 disk-full banner, C23 camera r
 - comeup-03/04 countdown roll and recording state (C13); found the pill truncation, fixed in #22 and re-shot whole
 - comeup-05 AX5 recorder: Record and Done reachable; the first overlap assertion was a false positive (scroll content frame), fixed
 - comeup-06 "Nothing was saved." toast (V2); capsule too faint, fixed in #22
-- comeup-07 delete-recording toast (V4): first run hit a simulator launch failure ("does not have a process ID"), re-running
+- comeup-06/07 after the capsule fix: "Nothing was saved." and "Recording deleted" read as dark capsules; delete returns to Recordings with the session gone (V2, V4). The first comeup-07 run hit a simulator launch failure, the next run passed
 - Unit: ExportModel.retry, RecorderPresentation.nearsCap (V1, which a UI run cannot reach: it needs 9 minutes of recording), AppModel nothing-saved toast, Haptics lint
 
 ## Measured probes after this pass

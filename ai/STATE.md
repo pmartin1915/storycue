@@ -8,7 +8,7 @@ Tellfolk (formerly StoryCue) 1.0 was added for review by Perry on 2026-10-19 (AS
 ## Live workstreams
 | Stream | State | Next |
 |---|---|---|
-| App code | comeup pass 2026-11-09 (Sonnet/Kimi/Sol review, `ai/comeup/2026-11-09/`): PRs #19 #20 #21 merged to main, #22 (Perry's veteran picks V1-V5) last. All for the NEXT version; 1.0 in review is untouched | Next TestFlight build: Perry's device look (amber pill near 10 min, toasts, VoiceOver countdown); second comeup pass takes the audit flags and the Dynamic Type caps (scorecard) |
+| App code | comeup pass 2026-11-09 (Sonnet/Kimi/Sol review, `ai/comeup/2026-11-09/`): PRs #19-#22 merged to main (#22 = Perry's veteran picks V1-V5, `cecd196`). All for the NEXT version; 1.0 in review is untouched | Next TestFlight build: Perry's device look (amber pill near 10 min, toasts, VoiceOver countdown); second comeup pass takes the audit flags and the Dynamic Type caps (scorecard) |
 | TestFlight | 1.0 (14.1) = deploy run `37258274920` from main `f2332ea`, Xcode 27A266a | Perry device checks (Reduce Motion morph, VoiceOver, haptics, serif over camera, drag feel) |
 | S6 listing | metadata in `docs/S6-ASC-METADATA.md`; support/privacy pages on martinapps-site branch `storycue-pages` `cd10b5d`, MERGED and live (martinapps-site `cfaa378`, 2026-10-16) | None; support and privacy URLs resolve |
 | Featuring nomination | drafted `docs/S6-FEATURING-NOMINATION.md` (`0e8fe1b`), App Launch window 11-16..11-29 | "Why I built it" line DONE 2026-10-19 (in the doc); Perry files; week of 2026-10-19, Claude prefills the nomination (was targeted ~10-09; filed status unverified, last seen 2026-10-04) |
