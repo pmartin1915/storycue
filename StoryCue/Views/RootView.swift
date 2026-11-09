@@ -52,10 +52,13 @@ struct ToastView: View {
     var body: some View {
         Text(text)
             .font(.callout)
+            .foregroundStyle(.white)
             .multilineTextAlignment(.center)
             .padding(.horizontal, DesignTokens.Spacing.l)
             .padding(.vertical, DesignTokens.Spacing.s)
-            .background(.regularMaterial, in: Capsule())
+            // The over-camera backing, not a material: a light material vanished on the
+            // light grouped background (comeup-06 review shot). White on it clears 7:1 anywhere.
+            .background(DesignTokens.overCameraFill, in: Capsule())
             .padding(.horizontal, DesignTokens.Spacing.l)
             .allowsHitTesting(false)
             .accessibilityIdentifier("toast")
