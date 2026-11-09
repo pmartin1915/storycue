@@ -51,8 +51,15 @@ struct ConsentView: View {
                     isBeginning = false
                 }
             } label: {
-                Text(UICopy.consentConfirm)
-                    .frame(maxWidth: .infinity)
+                // Disabled until the library loads: show that it is on its way, not dead.
+                HStack(spacing: DesignTokens.Spacing.s) {
+                    if !model.library.isLoaded {
+                        ProgressView()
+                            .tint(DesignTokens.onAccent)
+                    }
+                    Text(UICopy.consentConfirm)
+                }
+                .frame(maxWidth: .infinity)
             }
             .primaryAction()
             .disabled(isBeginning || !model.library.isLoaded)

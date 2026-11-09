@@ -44,6 +44,9 @@ struct RecorderView: View {
                     .padding(.bottom, 24)
             }
             .padding(.horizontal)
+            // Covered by the blocking overlay: VoiceOver must not walk the hidden recorder.
+            // The Done button lives in the navigation bar, outside this, so it stays reachable.
+            .accessibilityHidden(presentation.blocking != .none)
 
             if presentation.blocking != .none {
                 blockingOverlay
@@ -90,6 +93,29 @@ struct RecorderView: View {
         }
         .onChange(of: presentation.blocking) { _, new in
             if new != .none { cancelCountdown() }
+        }
+        // The filmer is looking at the subject, not the screen: speak what changed.
+        .onChange(of: presentation.countdownText) { _, new in
+            if let new { announce(new) }
+        }
+        .onChange(of: presentation.showsRecordingDot) { _, isRecording in
+            if isRecording { announce(UICopy.recordingIndicator) }
+        }
+        .onChange(of: presentation.banner) { _, new in
+            if let text = bannerString(new) { announce(text) }
+        }
+    }
+
+    private func announce(_ text: String) {
+        AccessibilityNotification.Announcement(text).post()
+    }
+
+    private func bannerString(_ banner: RecorderPresentation.Banner) -> String? {
+        switch banner {
+        case .none: nil
+        case .readAloud: UICopy.readAloudBanner
+        case .noAudio: UICopy.noAudioBanner
+        case let .paused(reason): UICopy.pausedBanner(reason)
         }
     }
 
@@ -257,15 +283,8 @@ struct RecorderView: View {
 
     @ViewBuilder
     private var bannerRow: some View {
-        switch presentation.banner {
-        case .none:
-            EmptyView()
-        case .readAloud:
-            bannerText(UICopy.readAloudBanner)
-        case .noAudio:
-            bannerText(UICopy.noAudioBanner)
-        case let .paused(reason):
-            bannerText(UICopy.pausedBanner(reason))
+        if let text = bannerString(presentation.banner) {
+            bannerText(text)
         }
     }
 
@@ -417,8 +436,12 @@ struct RecorderView: View {
         Text(text)
             .font(.largeTitle.bold().monospacedDigit())
             .foregroundStyle(.white)
+            // 3-2-1 rolls like the rest of the recorder moves, instead of snapping.
+            .contentTransition(.numericText(countsDown: true))
+            .animation(reduceMotion ? nil : DesignTokens.Motion.morph, value: text)
             .padding(32)
             .background(DesignTokens.overCameraFill, in: Circle())
+            .accessibilityIdentifier("countdown")
     }
 
     // MARK: - Blocking overlay
@@ -430,45 +453,66 @@ struct RecorderView: View {
         Color.black
             .ignoresSafeArea()
             .overlay {
-                switch presentation.blocking {
-                case .none:
-                    EmptyView()
-                case .preparing:
-                    VStack(spacing: 16) {
-                        ProgressView()
-                        Text(UICopy.preparing)
-                            .font(.body)
-                            .foregroundStyle(.white)
+                // Centered when it fits; scrolls at the largest text sizes so the whole
+                // explanation and Open Settings stay reachable.
+                ViewThatFits(in: .vertical) {
+                    blockingContent
+                    ScrollView {
+                        blockingContent
                     }
-                case .notAuthorized:
-                    VStack(spacing: 16) {
-                        Text(UICopy.notAuthorizedTitle)
-                            .font(.title2.bold())
-                            .foregroundStyle(.white)
-                        Text(UICopy.notAuthorizedBody)
-                            .font(.body)
-                            .foregroundStyle(.white)
-                        Button(UICopy.openSettings) {
-                            if let url = URL(string: UIApplication.openSettingsURLString) {
-                                UIApplication.shared.open(url)
-                            }
-                        }
-                        .font(.title2)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .accessibilityLabel(UICopy.openSettings)
-                    }
-                    .padding()
-                case .unavailable:
-                    VStack(spacing: 16) {
-                        Text(UICopy.unavailableTitle)
-                            .font(.title2.bold())
-                            .foregroundStyle(.white)
-                        Text(UICopy.unavailableBody)
-                            .font(.body)
-                            .foregroundStyle(.white)
-                    }
-                    .padding()
+                    .scrollBounceBehavior(.basedOnSize)
                 }
             }
+    }
+
+    @ViewBuilder
+    private var blockingContent: some View {
+        switch presentation.blocking {
+        case .none:
+            EmptyView()
+        case .preparing:
+            VStack(spacing: DesignTokens.Spacing.l) {
+                ProgressView()
+                    .tint(.white)   // the default spinner is dark gray on this black in light mode
+                Text(UICopy.preparing)
+                    .font(.body)
+                    .foregroundStyle(.white)
+            }
+            .padding()
+        case .notAuthorized:
+            VStack(spacing: DesignTokens.Spacing.l) {
+                Text(UICopy.notAuthorizedTitle)
+                    .font(.title2.bold())
+                    .foregroundStyle(.white)
+                    .accessibilityAddTraits(.isHeader)
+                Text(UICopy.notAuthorizedBody)
+                    .font(.body)
+                    .foregroundStyle(.white)
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text(UICopy.openSettings)
+                        .frame(maxWidth: .infinity)
+                }
+                .primaryAction()
+                .accessibilityIdentifier("openSettings")
+            }
+            .multilineTextAlignment(.center)
+            .padding()
+        case .unavailable:
+            VStack(spacing: DesignTokens.Spacing.l) {
+                Text(UICopy.unavailableTitle)
+                    .font(.title2.bold())
+                    .foregroundStyle(.white)
+                    .accessibilityAddTraits(.isHeader)
+                Text(UICopy.unavailableBody)
+                    .font(.body)
+                    .foregroundStyle(.white)
+            }
+            .multilineTextAlignment(.center)
+            .padding()
+        }
     }
 }
