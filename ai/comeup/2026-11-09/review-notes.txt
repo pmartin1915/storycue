@@ -1,0 +1,13 @@
+Tellfolk is a family-interview recorder. Someone (the filmer) holds the phone, picks a question deck, and records the person being interviewed answering one question at a time, with a read-aloud prompt on screen. It is meant for families recording grandparents, parents, kids or couples.
+
+Purpose and audience: adults who want to keep a relative's stories as video. No account, no sign-in, no paid features, no user-generated content shared with anyone.
+
+How to test (no setup or sample files needed): launch, choose a deck, tap Record, answer a question aloud, tap Next question or Finish, then open Recordings to play, keep, delete or export a clip. Camera and microphone permission are requested on first record.
+
+External services: none. The app makes no network requests, has no accounts, analytics, ads, third-party SDKs or AI services. All video stays on the device; the only thing that leaves is a clip the user explicitly exports to Photos or the share sheet.
+
+Regional differences: none. The same app and behaviour in every region.
+
+Regulated industry: not applicable. The app is not a medical, financial or other regulated product.
+
+A screen recording on a physical device, starting at launch, is attached to the reply in Resolution Center.

@@ -1,0 +1,21 @@
+APP 6818468570 Tellfolk dev.pmartin1915.storycue
+
+BUILDS (newest 8)
+  build 16.1  VALID  expired=False  uploaded=2026-11-09T17:04:18-08:00
+  build 15.1  VALID  expired=False  uploaded=2026-10-18T22:25:14-07:00
+  build 14.1  VALID  expired=False  uploaded=2026-10-04T20:13:29-07:00
+  build 13.1  VALID  expired=False  uploaded=2026-10-04T19:06:17-07:00
+  build 12.1  VALID  expired=False  uploaded=2026-10-04T15:04:20-07:00
+  build 11.1  VALID  expired=False  uploaded=2026-10-04T13:59:28-07:00
+  build 10.1  VALID  expired=False  uploaded=2026-10-04T11:18:04-07:00
+  build 9.1  VALID  expired=False  uploaded=2026-10-04T10:21:29-07:00
+
+VERSIONS
+
+  1.0  PREPARE_FOR_SUBMISSION  release=AFTER_APPROVAL
+   attached build: 16.1
+   [en-US] whatsNew 0 chars: ''
+     APP_IPHONE_67: 5 shots
+   review notes 1251 chars; contact set: True; demo req: False
+
+preflight OK (console-only items not checked: App Privacy publish, age rating, med-device declaration)
